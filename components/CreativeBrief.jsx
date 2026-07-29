@@ -400,7 +400,7 @@ function buildPdf(jsPDF, brief, items) {
 export default function CreativeBrief() {
   const [brief, setBrief] = useState({ client: '', campaign: '', deadline: '', notes: '' });
   const [items, setItems] = useState([
-    { id: nextId(), format: 'Single image', copy: {}, carouselCta: 'Landing page', quantity: 1, notes: '' },
+    { id: nextId(), format: 'Single image', copy: {}, carouselCta: 'Landing page', quantity: 1, notes: '', followButton: true },
   ]);
   const [activeId, setActiveId] = useState(null);
 
@@ -425,7 +425,8 @@ export default function CreativeBrief() {
     setItems((p) => p.map((i) => (i.id === id ? { ...i, quantity: Math.min(20, Math.max(1, i.quantity + delta)) } : i)));
 
   const addItem = (format) => {
-    const it = { id: nextId(), format, copy: {}, carouselCta: 'Landing page', quantity: 1, notes: '' };
+    const followButton = FORMATS[format].preview === 'feed' && format !== 'Thought leader';
+    const it = { id: nextId(), format, copy: {}, carouselCta: 'Landing page', quantity: 1, notes: '', followButton };
     setItems((p) => [...p, it]);
     setActiveId(it.id);
   };
@@ -560,6 +561,13 @@ export default function CreativeBrief() {
                       ))}
                     </div>
                   )}
+                  {spec.preview === 'feed' && active.format !== 'Thought leader' && (
+                    <label className="follow-toggle">
+                      <input type="checkbox" checked={!!active.followButton}
+                        onChange={(e) => setItem(active.id, { followButton: e.target.checked })} />
+                      <span>Show &quot;+ Follow&quot; button next to the Page name</span>
+                    </label>
+                  )}
                   {activeFields.map((f) => {
                     const v = active.copy[f.key] || '';
                     const over = v.length > f.limit;
@@ -602,10 +610,13 @@ export default function CreativeBrief() {
                     <div className="post">
                       <div className="post-top">
                         <div className="avatar" />
-                        <div>
+                        <div className="post-id">
                           <div className="post-name">{brief.client || 'Client name'}</div>
                           <div className="post-sub">Promoted</div>
                         </div>
+                        {active.followButton && active.format !== 'Thought leader' && (
+                          <button type="button" className="post-follow" disabled>+ Follow</button>
+                        )}
                       </div>
                       <p className="post-body">
                         {introT.shown || <span className="ph">Introductory text appears here…</span>}
@@ -759,8 +770,14 @@ const CSS = `
 .post-top{display:flex;align-items:center;gap:8px;padding:10px 12px 7px;}
 .avatar{width:34px;height:34px;background:#DCE0EC;border-radius:50%;flex:none;}
 .avatar.sm{width:24px;height:24px;}
+.post-id{flex:1;min-width:0;}
 .post-name{font-size:12.5px;font-weight:600;}
 .post-sub{font-size:10.5px;color:#7A7A72;}
+.post-follow{flex:none;font-family:inherit;font-size:12.5px;font-weight:600;color:#0A66C2;
+  background:none;border:none;padding:4px 2px;cursor:default;white-space:nowrap;}
+.follow-toggle{display:flex;align-items:center;gap:7px;padding-bottom:11px;margin-bottom:11px;
+  border-bottom:1px solid var(--rule);font-size:12.5px;color:var(--ink-2);cursor:pointer;}
+.follow-toggle input{cursor:pointer;}
 .post-body{margin:0;padding:0 12px 9px;font-size:12.5px;line-height:1.5;
   white-space:pre-wrap;word-break:break-word;}
 .more{color:#7A7A72;margin-left:3px;}
