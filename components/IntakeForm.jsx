@@ -1,0 +1,936 @@
+'use client';
+
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+
+/* ------------------------------------------------------------------ *
+ * Benchmark data.
+ *
+ * These are indicative ranges compiled from published 2025-26 sources.
+ * Replace them with your own account data as you accumulate it - that is
+ * what will make the forecast actually trustworthy for Whitehart clients.
+ * ------------------------------------------------------------------ */
+const SECTORS = {
+  'Professional & corporate services': { cpc: 8.5, cpl: 65, ctr: 0.48 },
+  'Technology & software (B2B SaaS)': { cpc: 11.0, cpl: 125, ctr: 0.42 },
+  'Financial services & insurance': { cpc: 12.0, cpl: 140, ctr: 0.38 },
+  'Healthcare & life sciences': { cpc: 13.0, cpl: 155, ctr: 0.35 },
+  'Manufacturing & industrial': { cpc: 7.5, cpl: 85, ctr: 0.52 },
+  'Education & training': { cpc: 6.0, cpl: 70, ctr: 0.55 },
+  'Recruitment & staffing': { cpc: 7.0, cpl: 75, ctr: 0.5 },
+  'Media & communications': { cpc: 6.5, cpl: 80, ctr: 0.58 },
+  'Other / not listed': { cpc: 9.0, cpl: 100, ctr: 0.45 },
+};
+
+const OBJECTIVES = [
+  'Brand awareness',
+  'Website traffic',
+  'Engagement',
+  'Video views',
+  'Lead generation',
+  'Website conversions',
+];
+
+const EMPTY = {
+  client: '',
+  sector: '',
+  website: '',
+  markets: '',
+  objective: '',
+  successLooksLike: '',
+  targetLeads: '',
+  dealSize: '',
+  startDate: '',
+  months: '',
+  budget: '',
+  campaignCount: '',
+  jobTitles: '',
+  seniority: '',
+  companySize: '',
+  audienceSize: '',
+  targetAccountList: '',
+  runningNow: '',
+  insightTag: '',
+  conversionTracking: '',
+  crm: '',
+  leadRouting: '',
+  landingPages: '',
+  assets: [],
+  constraints: '',
+};
+
+/* ------------------------------------------------------------------ *
+ * Recommendation engine.
+ * Returns entries in priority order: blockers, then actions, then notes.
+ * ------------------------------------------------------------------ */
+function analyse(b) {
+  const out = [];
+  const add = (level, title, body) => out.push({ level, title, body });
+
+  const budget = Number(b.budget) || 0;
+  const months = Number(b.months) || 0;
+  const campaigns = Number(b.campaignCount) || 0;
+  const audience = Number(b.audienceSize) || 0;
+  const targetLeads = Number(b.targetLeads) || 0;
+  const bench = SECTORS[b.sector];
+
+  const monthly = months ? budget / months : 0;
+  const daily = monthly ? monthly / 30.4 : 0;
+  const dailyPerCampaign = campaigns ? daily / campaigns : daily;
+
+  /* ---------- Blockers: things that break the campaign ---------- */
+
+  if (b.insightTag === 'No') {
+    add(
+      'blocker',
+      'Insight Tag not installed',
+      'Without it there is no conversion tracking, no website retargeting and no site-based Matched Audiences. Install site-wide before launch — allow 24–48 hours for it to verify.'
+    );
+  }
+
+  if (b.insightTag === 'Yes' && b.conversionTracking === 'No') {
+    add(
+      'blocker',
+      'No conversion actions defined',
+      'The tag is firing but nothing is being counted. Define conversions in Campaign Manager and attach them to campaigns — conversions only track once linked.'
+    );
+  }
+
+  if (b.leadRouting === 'No' && b.objective === 'Lead generation') {
+    add(
+      'blocker',
+      'Lead routing not in place',
+      'This is the most common silent failure: Lead Gen Form submissions sit inside LinkedIn unread. Wire up CRM sync or a scheduled export, and agree who follows up and how fast.'
+    );
+  }
+
+  if (daily > 0 && dailyPerCampaign < 10) {
+    add(
+      'blocker',
+      `Daily spend too thin (~£${dailyPerCampaign.toFixed(2)}/campaign)`,
+      `£${budget.toLocaleString()} over ${months} month${months === 1 ? '' : 's'} across ${campaigns || 1} campaign${campaigns === 1 ? '' : 's'} sits under LinkedIn's practical £10/day floor. Cut campaign count or raise budget, or delivery will stall.`
+    );
+  }
+
+  if (bench && targetLeads && monthly) {
+    const forecastLeads = monthly / bench.cpl;
+    if (targetLeads > forecastLeads * 1.25) {
+      const needed = targetLeads * bench.cpl;
+      add(
+        'blocker',
+        'Target unreachable on this budget',
+        `${targetLeads} leads/month at a sector benchmark of £${bench.cpl} CPL needs roughly £${Math.round(needed).toLocaleString()}/month. Current plan gives about ${Math.floor(forecastLeads)}. Reset the target or the budget before committing.`
+      );
+    }
+  }
+
+  /* ---------- Actions: things to do differently ---------- */
+
+  if (audience > 0 && audience < 50000) {
+    add(
+      'action',
+      'Audience likely too narrow',
+      `${audience.toLocaleString()} is below the 50k floor where Sponsored Content delivers reliably. Broaden seniority or add adjacent job functions, or accept high frequency and low reach.`
+    );
+  }
+
+  if (audience > 500000 && ['Lead generation', 'Website conversions'].includes(b.objective)) {
+    add(
+      'action',
+      'Audience too broad for this objective',
+      `${audience.toLocaleString()} will scatter spend. Layer company size, seniority or a company list to tighten it before pushing conversion budget through.`
+    );
+  }
+
+  if (b.targetAccountList === 'Yes') {
+    add(
+      'action',
+      'Build a company Matched Audience',
+      'Upload the account list and layer role targeting on top. Company lists match at roughly 70–90%, far above the 30–60% typical of email lists. Include LinkedIn Page URLs to improve the match.'
+    );
+  }
+
+  if (b.assets.includes('Report, guide or deck')) {
+    add(
+      'action',
+      'Use Document Ads',
+      'Document Ads have been running lower cost-per-lead than equivalent single image campaigns, and you get a read-depth metric rather than just clicks. Decide upfront whether to gate it.'
+    );
+  }
+
+  if (b.assets.includes('Founder or exec on camera')) {
+    add(
+      'action',
+      'Run Thought Leader Ads',
+      'A 30–60 second piece to camera from a named person typically clears a fraction of the CPC of polished brand creative. Cheapest credible reach available on the platform right now.'
+    );
+  }
+
+  if (b.landingPages === 'No' && ['Lead generation', 'Website conversions'].includes(b.objective)) {
+    add(
+      'action',
+      'Default to Lead Gen Forms',
+      'Native forms convert at roughly 15–20% against 4–9% for a landing page, because they pre-fill from the profile. Keep to 3–4 fields. Removes the landing page dependency entirely.'
+    );
+  }
+
+  if (b.runningNow === 'No' && b.objective === 'Lead generation') {
+    add(
+      'action',
+      'Cold audience, conversion objective',
+      'Running lead gen straight at people who have never heard of the client is the classic mismatch. Budget a warm-up layer first, then retarget engagers into the form.'
+    );
+  }
+
+  /* ---------- Notes: worth knowing, not urgent ---------- */
+
+  if (b.markets && /\b(eu|europe|germany|france|spain|italy|netherlands|ireland|poland)\b/i.test(b.markets)) {
+    add(
+      'note',
+      'EU targeting caveats',
+      'Sponsored Messaging requires prior opt-in for EU members under the ePrivacy Directive, and Matched Audience sizes run smaller in the EEA because matching depends on member consent.'
+    );
+  }
+
+  if (b.objective === 'Brand awareness') {
+    add(
+      'note',
+      'Set a frequency cap',
+      'Awareness campaigns support native frequency capping. Without one, engagement decays and negative feedback climbs as the same people see the ad repeatedly.'
+    );
+  }
+
+  if (budget > 0 && months > 0) {
+    add(
+      'note',
+      'Schedule delivery hours',
+      'B2B accounts typically lose 20–35% of spend to weekends and overnight. Agree a dayparting window at setup rather than discovering the waste at month end.'
+    );
+  }
+
+  if (b.crm && b.crm !== 'None') {
+    add(
+      'note',
+      `Close the loop with ${b.crm}`,
+      'Add the LinkedIn click ID as a hidden field on forms so ad engagement ties to CRM records. Gets you most of the attribution value without building a sync engine.'
+    );
+  }
+
+  const order = { blocker: 0, action: 1, note: 2 };
+  return out.sort((a, c) => order[a.level] - order[c.level]);
+}
+
+function forecast(b) {
+  const bench = SECTORS[b.sector];
+  const budget = Number(b.budget) || 0;
+  const months = Number(b.months) || 0;
+  if (!bench || !budget || !months) return null;
+
+  const monthly = budget / months;
+  const clicks = monthly / bench.cpc;
+  const impressions = clicks / (bench.ctr / 100);
+  const leads = monthly / bench.cpl;
+  const dealSize = Number(b.dealSize) || 0;
+
+  return {
+    monthly,
+    daily: monthly / 30.4,
+    impressions,
+    clicks,
+    leads,
+    cpl: bench.cpl,
+    cpc: bench.cpc,
+    pipeline: dealSize ? leads * dealSize : null,
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * Field primitives
+ * ------------------------------------------------------------------ */
+
+function Field({ label, hint, children }) {
+  return (
+    <label className="fld">
+      <span className="fld-label">
+        {label}
+        {hint && <em className="fld-hint">{hint}</em>}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function Text({ value, onChange, placeholder, type = 'text', prefix }) {
+  return (
+    <span className={prefix ? 'inp-wrap has-prefix' : 'inp-wrap'}>
+      {prefix && <span className="inp-prefix">{prefix}</span>}
+      <input
+        className="inp"
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </span>
+  );
+}
+
+function Area({ value, onChange, placeholder, rows = 2 }) {
+  return (
+    <textarea
+      className="inp area"
+      rows={rows}
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
+
+function Choose({ value, onChange, options }) {
+  return (
+    <select className="inp sel" value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">—</option>
+      {options.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function Toggle({ value, onChange, options = ['Yes', 'No'] }) {
+  return (
+    <span className="tog">
+      {options.map((o) => (
+        <button
+          key={o}
+          type="button"
+          className={value === o ? 'tog-btn on' : 'tog-btn'}
+          onClick={() => onChange(value === o ? '' : o)}
+        >
+          {o}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+function Ticks({ value, onChange, options }) {
+  const toggle = (o) =>
+    onChange(value.includes(o) ? value.filter((v) => v !== o) : [...value, o]);
+  return (
+    <span className="ticks">
+      {options.map((o) => (
+        <button
+          key={o}
+          type="button"
+          className={value.includes(o) ? 'tick on' : 'tick'}
+          onClick={() => toggle(o)}
+        >
+          <span className="tick-box">{value.includes(o) ? '×' : ''}</span>
+          {o}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+function Section({ letter, title, children }) {
+  return (
+    <section className="sec">
+      <h2 className="sec-head">
+        <span className="sec-letter">{letter}</span>
+        {title}
+      </h2>
+      <div className="sec-body">{children}</div>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Main
+ * ------------------------------------------------------------------ */
+
+export default function IntakeForm() {
+  const [b, setB] = useState(EMPTY);
+  const [saved, setSaved] = useState('');
+  const [copied, setCopied] = useState(false);
+  const loaded = useRef(false);
+
+  const set = (k) => (v) => setB((prev) => ({ ...prev, [k]: v }));
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await window.storage.get('brief:current');
+        if (r?.value) setB({ ...EMPTY, ...JSON.parse(r.value) });
+      } catch {
+        /* no saved brief yet - expected on first run */
+      }
+      loaded.current = true;
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!loaded.current) return;
+    const t = setTimeout(async () => {
+      try {
+        await window.storage.set('brief:current', JSON.stringify(b));
+        setSaved(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+      } catch {
+        setSaved('not saved');
+      }
+    }, 600);
+    return () => clearTimeout(t);
+  }, [b]);
+
+  const notes = useMemo(() => analyse(b), [b]);
+  const fc = useMemo(() => forecast(b), [b]);
+
+  const filled = Object.entries(b).filter(([, v]) =>
+    Array.isArray(v) ? v.length > 0 : String(v).trim() !== ''
+  ).length;
+  const total = Object.keys(EMPTY).length;
+
+  const copy = () => {
+    const lines = [
+      `LINKEDIN ADS — DISCOVERY BRIEF`,
+      `${b.client || 'Unnamed client'} · ${new Date().toLocaleDateString('en-GB')}`,
+      '',
+      ...Object.entries(b)
+        .filter(([, v]) => (Array.isArray(v) ? v.length : String(v).trim()))
+        .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`),
+      '',
+      'FLAGS',
+      ...notes.map((n) => `[${n.level.toUpperCase()}] ${n.title} — ${n.body}`),
+    ];
+    navigator.clipboard?.writeText(lines.join('\n'));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
+
+  const money = (n) =>
+    '£' + Math.round(n).toLocaleString('en-GB');
+
+  return (
+    <>
+      <style>{CSS}</style>
+      <div className="sheet">
+        {/* ---------------- form header ---------------- */}
+        <header className="masthead">
+          <div className="mast-left">
+            <div className="mast-eyebrow">LinkedIn Ads · Whitehart</div>
+            <h1 className="mast-title">Client discovery brief</h1>
+          </div>
+          <dl className="mast-meta">
+            <div>
+              <dt>Form</dt>
+              <dd>LA-01</dd>
+            </div>
+            <div>
+              <dt>Date</dt>
+              <dd>{new Date().toLocaleDateString('en-GB')}</dd>
+            </div>
+            <div>
+              <dt>Complete</dt>
+              <dd>
+                {filled}/{total}
+              </dd>
+            </div>
+          </dl>
+        </header>
+
+        <div className="cols">
+          {/* ---------------- top copy: the form ---------------- */}
+          <div className="copy top-copy">
+            <Section letter="A" title="Client & market">
+              <Field label="Client">
+                <Text value={b.client} onChange={set('client')} placeholder="Company name" />
+              </Field>
+              <Field label="Sector" hint="drives benchmarks">
+                <Choose value={b.sector} onChange={set('sector')} options={Object.keys(SECTORS)} />
+              </Field>
+              <Field label="Website">
+                <Text value={b.website} onChange={set('website')} placeholder="example.com" />
+              </Field>
+              <Field label="Markets">
+                <Text value={b.markets} onChange={set('markets')} placeholder="UK, Ireland, DACH" />
+              </Field>
+            </Section>
+
+            <Section letter="B" title="Objective & targets">
+              <Field label="Campaign objective">
+                <Choose value={b.objective} onChange={set('objective')} options={OBJECTIVES} />
+              </Field>
+              <Field label="Success looks like" hint="their words">
+                <Area
+                  value={b.successLooksLike}
+                  onChange={set('successLooksLike')}
+                  placeholder="What do they say a good outcome is?"
+                />
+              </Field>
+              <Field label="Target leads / month">
+                <Text
+                  value={b.targetLeads}
+                  onChange={set('targetLeads')}
+                  type="number"
+                  placeholder="0"
+                />
+              </Field>
+              <Field label="Average deal size">
+                <Text
+                  value={b.dealSize}
+                  onChange={set('dealSize')}
+                  type="number"
+                  prefix="£"
+                  placeholder="0"
+                />
+              </Field>
+            </Section>
+
+            <Section letter="C" title="Budget & duration">
+              <Field label="Total budget">
+                <Text value={b.budget} onChange={set('budget')} type="number" prefix="£" placeholder="0" />
+              </Field>
+              <Field label="Duration" hint="months">
+                <Text value={b.months} onChange={set('months')} type="number" placeholder="0" />
+              </Field>
+              <Field label="Start date">
+                <Text value={b.startDate} onChange={set('startDate')} type="date" />
+              </Field>
+              <Field label="Planned campaigns">
+                <Text
+                  value={b.campaignCount}
+                  onChange={set('campaignCount')}
+                  type="number"
+                  placeholder="0"
+                />
+              </Field>
+            </Section>
+
+            <Section letter="D" title="Audience">
+              <Field label="Job titles & functions">
+                <Area
+                  value={b.jobTitles}
+                  onChange={set('jobTitles')}
+                  placeholder="Heads of Marketing, Demand Gen Managers…"
+                />
+              </Field>
+              <Field label="Seniority">
+                <Text
+                  value={b.seniority}
+                  onChange={set('seniority')}
+                  placeholder="Manager and above"
+                />
+              </Field>
+              <Field label="Company size">
+                <Text value={b.companySize} onChange={set('companySize')} placeholder="201–1000" />
+              </Field>
+              <Field label="Est. audience size">
+                <Text
+                  value={b.audienceSize}
+                  onChange={set('audienceSize')}
+                  type="number"
+                  placeholder="0"
+                />
+              </Field>
+              <Field label="Target account list available">
+                <Toggle value={b.targetAccountList} onChange={set('targetAccountList')} />
+              </Field>
+            </Section>
+
+            <Section letter="E" title="Tracking & systems">
+              <Field label="Running LinkedIn ads now">
+                <Toggle value={b.runningNow} onChange={set('runningNow')} />
+              </Field>
+              <Field label="Insight Tag installed">
+                <Toggle value={b.insightTag} onChange={set('insightTag')} />
+              </Field>
+              <Field label="Conversion tracking live">
+                <Toggle value={b.conversionTracking} onChange={set('conversionTracking')} />
+              </Field>
+              <Field label="CRM">
+                <Choose
+                  value={b.crm}
+                  onChange={set('crm')}
+                  options={['HubSpot', 'Salesforce', 'Pipedrive', 'Dynamics', 'Other', 'None']}
+                />
+              </Field>
+              <Field label="Lead routing agreed" hint="who follows up, how fast">
+                <Toggle value={b.leadRouting} onChange={set('leadRouting')} />
+              </Field>
+            </Section>
+
+            <Section letter="F" title="Assets & constraints">
+              <Field label="Landing pages ready">
+                <Toggle value={b.landingPages} onChange={set('landingPages')} />
+              </Field>
+              <Field label="Assets available">
+                <Ticks
+                  value={b.assets}
+                  onChange={set('assets')}
+                  options={[
+                    'Report, guide or deck',
+                    'Founder or exec on camera',
+                    'Case studies',
+                    'Product video',
+                    'Brand imagery',
+                    'Webinar or event',
+                  ]}
+                />
+              </Field>
+              <Field label="Constraints" hint="legal, brand, approvals">
+                <Area
+                  value={b.constraints}
+                  onChange={set('constraints')}
+                  placeholder="Anything that slows sign-off or limits messaging"
+                />
+              </Field>
+            </Section>
+
+            <footer className="foot">
+              <button type="button" className="btn" onClick={copy}>
+                {copied ? 'Copied' : 'Copy brief'}
+              </button>
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() => {
+                  if (confirm('Clear this brief and start a new one?')) setB(EMPTY);
+                }}
+              >
+                New brief
+              </button>
+              <span className="save">{saved ? `Saved ${saved}` : 'Saving…'}</span>
+            </footer>
+          </div>
+
+          {/* ---------------- carbon copy: what it implies ---------------- */}
+          <aside className="copy carbon">
+            <div className="carbon-head">
+              <span className="carbon-eyebrow">Duplicate — office copy</span>
+              <h2 className="carbon-title">What this implies</h2>
+            </div>
+
+            {fc && (
+              <div className="fcast">
+                <div className="fcast-head">Forecast at sector benchmark</div>
+                <table className="fcast-tbl">
+                  <tbody>
+                    <tr>
+                      <th>Monthly budget</th>
+                      <td>{money(fc.monthly)}</td>
+                    </tr>
+                    <tr>
+                      <th>Daily</th>
+                      <td>{money(fc.daily)}</td>
+                    </tr>
+                    <tr>
+                      <th>Impressions</th>
+                      <td>{Math.round(fc.impressions).toLocaleString()}</td>
+                    </tr>
+                    <tr>
+                      <th>Clicks</th>
+                      <td>
+                        {Math.round(fc.clicks).toLocaleString()}{' '}
+                        <em>@ {money(fc.cpc)}</em>
+                      </td>
+                    </tr>
+                    <tr className="hi">
+                      <th>Leads / month</th>
+                      <td>
+                        {Math.floor(fc.leads).toLocaleString()} <em>@ {money(fc.cpl)}</em>
+                      </td>
+                    </tr>
+                    {fc.pipeline && (
+                      <tr>
+                        <th>Pipeline value</th>
+                        <td>{money(fc.pipeline)}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+                <p className="fcast-note">
+                  Indicative sector benchmarks, not a promise. Replace with real account data as
+                  you gather it.
+                </p>
+              </div>
+            )}
+
+            {notes.length === 0 && !fc && (
+              <p className="empty">
+                Start filling the form. Flags, gaps and a forecast print here as you go.
+              </p>
+            )}
+
+            <ul className="notes">
+              {notes.map((n, i) => (
+                <li key={n.title} className={`note ${n.level}`} style={{ '--i': i }}>
+                  <span className="note-tag">{n.level}</span>
+                  <h3 className="note-title">{n.title}</h3>
+                  <p className="note-body">{n.body}</p>
+                </li>
+              ))}
+            </ul>
+          </aside>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Styles — multipart carbon form.
+ * Top copy is white stock with printed labels and typed answers.
+ * Right column is the canary duplicate.
+ * ------------------------------------------------------------------ */
+const CSS = `
+.sheet {
+  --white:    #FCFCFA;
+  --canary:   #FAF3D2;
+  --canary-2: #F3E9B8;
+  --ink:      #1B1D19;
+  --ink-2:    #5C5F57;
+  --carbon:   #3A3F7A;
+  --rule:     #D6D4C8;
+  --rule-2:   #DCCF8E;
+  --stamp:    #A8342A;
+  --ok:       #2F6B4F;
+
+  font-family: 'Archivo', system-ui, sans-serif;
+  color: var(--ink);
+  background: #E8E6DD;
+  min-height: 100vh;
+  padding: 20px;
+  box-sizing: border-box;
+  -webkit-font-smoothing: antialiased;
+}
+.sheet *, .sheet *::before, .sheet *::after { box-sizing: border-box; }
+/* ---- masthead ---- */
+.masthead {
+  max-width: 1240px; margin: 0 auto;
+  background: var(--white);
+  border: 1px solid var(--ink);
+  border-bottom: none;
+  padding: 18px 22px 14px;
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 24px; flex-wrap: wrap;
+}
+.mast-eyebrow {
+  font-family: 'Archivo Narrow', sans-serif; font-weight: 700;
+  font-size: 10.5px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--carbon); margin-bottom: 5px;
+}
+.mast-title {
+  font-family: 'Archivo Narrow', sans-serif; font-weight: 700;
+  font-size: clamp(22px, 3.4vw, 32px); line-height: 1;
+  margin: 0; letter-spacing: -.01em; text-transform: uppercase;
+}
+.mast-meta { display: flex; gap: 26px; margin: 0; }
+.mast-meta div { text-align: right; }
+.mast-meta dt {
+  font-family: 'Archivo Narrow', sans-serif; font-weight: 700;
+  font-size: 9px; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--ink-2); margin-bottom: 2px;
+}
+.mast-meta dd {
+  font-family: 'Courier Prime', monospace; font-size: 14px;
+  margin: 0; color: var(--ink);
+}
+/* ---- two-column sheet ---- */
+.cols {
+  max-width: 1240px; margin: 0 auto;
+  display: grid; grid-template-columns: 1.32fr 1fr;
+  align-items: start;
+}
+.copy { border: 1px solid var(--ink); }
+.top-copy { background: var(--white); border-right: none; }
+.carbon {
+  background: var(--canary);
+  position: sticky; top: 20px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+/* ---- form sections ---- */
+.sec { border-bottom: 1px solid var(--rule); }
+.sec:last-of-type { border-bottom: none; }
+.sec-head {
+  display: flex; align-items: center; gap: 10px;
+  margin: 0; padding: 11px 22px 9px;
+  background: #F3F2EC; border-bottom: 1px solid var(--rule);
+  font-family: 'Archivo Narrow', sans-serif; font-weight: 700;
+  font-size: 12px; letter-spacing: .15em; text-transform: uppercase;
+}
+.sec-letter {
+  width: 19px; height: 19px; flex: none;
+  display: grid; place-items: center;
+  background: var(--carbon); color: var(--white);
+  font-size: 11px; letter-spacing: 0;
+}
+.sec-body { padding: 4px 22px 16px; }
+/* ---- fields ---- */
+.fld {
+  display: grid; grid-template-columns: 190px 1fr;
+  align-items: baseline; gap: 14px;
+  padding: 9px 0 8px;
+  border-bottom: 1px dotted var(--rule);
+}
+.fld:last-child { border-bottom: none; }
+.fld-label {
+  font-family: 'Archivo Narrow', sans-serif; font-weight: 600;
+  font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-2); padding-top: 3px;
+}
+.fld-hint {
+  display: block; font-style: normal; font-weight: 600;
+  font-size: 9.5px; letter-spacing: .08em; color: var(--carbon);
+  opacity: .75; margin-top: 1px;
+}
+.inp-wrap { display: block; position: relative; }
+.inp-wrap.has-prefix .inp { padding-left: 17px; }
+.inp-prefix {
+  position: absolute; left: 0; top: 3px;
+  font-family: 'Courier Prime', monospace; font-size: 14.5px; color: var(--ink-2);
+}
+.inp {
+  width: 100%; display: block;
+  font-family: 'Courier Prime', monospace; font-size: 14.5px; color: var(--carbon);
+  background: transparent; border: none; border-bottom: 1px solid var(--rule);
+  padding: 2px 0 4px; border-radius: 0; outline: none;
+}
+.inp::placeholder { color: #B6B4A9; font-size: 13px; }
+.inp:focus { border-bottom-color: var(--carbon); background: #F6F5FB; }
+.inp:focus-visible { outline: 2px solid var(--carbon); outline-offset: 2px; }
+.area { resize: vertical; line-height: 1.5; min-height: 44px; }
+.sel { cursor: pointer; }
+/* ---- toggles ---- */
+.tog { display: inline-flex; border: 1px solid var(--rule); }
+.tog-btn {
+  font-family: 'Archivo Narrow', sans-serif; font-weight: 700;
+  font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+  padding: 5px 15px; background: transparent; color: var(--ink-2);
+  border: none; cursor: pointer; transition: background .12s, color .12s;
+}
+.tog-btn + .tog-btn { border-left: 1px solid var(--rule); }
+.tog-btn:hover { background: #F1F0EA; }
+.tog-btn.on { background: var(--carbon); color: var(--white); }
+.tog-btn:focus-visible { outline: 2px solid var(--carbon); outline-offset: 2px; }
+/* ---- tick list ---- */
+.ticks { display: flex; flex-wrap: wrap; gap: 5px 16px; }
+.tick {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: 'Archivo', sans-serif; font-size: 12.5px; color: var(--ink-2);
+  background: none; border: none; padding: 2px 0; cursor: pointer;
+}
+.tick-box {
+  width: 14px; height: 14px; flex: none;
+  border: 1px solid var(--rule); background: var(--white);
+  font-family: 'Courier Prime', monospace; font-size: 13px; line-height: 12px;
+  color: var(--carbon); text-align: center;
+}
+.tick.on { color: var(--ink); }
+.tick.on .tick-box { border-color: var(--carbon); }
+.tick:focus-visible { outline: 2px solid var(--carbon); outline-offset: 2px; }
+/* ---- footer ---- */
+.foot {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 22px; border-top: 1px solid var(--ink);
+  background: #F3F2EC;
+}
+.btn {
+  font-family: 'Archivo Narrow', sans-serif; font-weight: 700;
+  font-size: 11px; letter-spacing: .13em; text-transform: uppercase;
+  padding: 8px 18px; cursor: pointer;
+  background: var(--carbon); color: var(--white); border: 1px solid var(--carbon);
+}
+.btn:hover { background: #2E3266; }
+.btn.ghost { background: transparent; color: var(--ink-2); border-color: var(--rule); }
+.btn.ghost:hover { background: var(--white); color: var(--ink); }
+.btn:focus-visible { outline: 2px solid var(--carbon); outline-offset: 2px; }
+.save {
+  margin-left: auto;
+  font-family: 'Courier Prime', monospace; font-size: 11.5px; color: var(--ink-2);
+}
+/* ---- carbon copy ---- */
+.carbon-head { padding: 18px 20px 12px; border-bottom: 1px solid var(--rule-2); }
+.carbon-eyebrow {
+  font-family: 'Archivo Narrow', sans-serif; font-weight: 700;
+  font-size: 9.5px; letter-spacing: .2em; text-transform: uppercase;
+  color: #93803C; display: block; margin-bottom: 4px;
+}
+.carbon-title {
+  font-family: 'Archivo Narrow', sans-serif; font-weight: 700;
+  font-size: 19px; letter-spacing: -.005em; text-transform: uppercase; margin: 0;
+}
+.empty {
+  padding: 22px 20px; margin: 0;
+  font-size: 13px; line-height: 1.55; color: #8C7C43;
+}
+/* ---- forecast block ---- */
+.fcast { padding: 14px 20px 16px; border-bottom: 1px solid var(--rule-2); }
+.fcast-head {
+  font-family: 'Archivo Narrow', sans-serif; font-weight: 700;
+  font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
+  color: #93803C; margin-bottom: 8px;
+}
+.fcast-tbl { width: 100%; border-collapse: collapse; }
+.fcast-tbl th {
+  text-align: left; font-family: 'Archivo', sans-serif; font-weight: 500;
+  font-size: 12.5px; color: var(--ink-2); padding: 4px 0;
+  border-bottom: 1px dotted var(--rule-2);
+}
+.fcast-tbl td {
+  text-align: right; font-family: 'Courier Prime', monospace; font-size: 14px;
+  color: var(--ink); padding: 4px 0; border-bottom: 1px dotted var(--rule-2);
+}
+.fcast-tbl td em {
+  font-style: normal; font-size: 11.5px; color: var(--ink-2);
+}
+.fcast-tbl tr.hi th { font-weight: 600; color: var(--ink); }
+.fcast-tbl tr.hi td { color: var(--carbon); font-weight: 700; }
+.fcast-note {
+  margin: 9px 0 0; font-size: 10.5px; line-height: 1.45; color: #93803C;
+}
+/* ---- flags ---- */
+.notes { list-style: none; margin: 0; padding: 0; }
+.note {
+  padding: 13px 20px 14px 18px;
+  border-bottom: 1px solid var(--rule-2);
+  border-left: 3px solid var(--carbon);
+  animation: print .22s ease-out both;
+  animation-delay: calc(var(--i) * 25ms);
+}
+.note.blocker { border-left-color: var(--stamp); background: #F7E9C8; }
+.note.note { border-left-color: var(--rule-2); }
+.note-tag {
+  font-family: 'Archivo Narrow', sans-serif; font-weight: 700;
+  font-size: 9px; letter-spacing: .2em; text-transform: uppercase;
+  color: var(--carbon); display: block; margin-bottom: 3px;
+}
+.note.blocker .note-tag { color: var(--stamp); }
+.note.note .note-tag { color: #93803C; }
+.note-title {
+  font-family: 'Archivo', sans-serif; font-weight: 600;
+  font-size: 13.5px; line-height: 1.3; margin: 0 0 4px;
+}
+.note-body {
+  margin: 0; font-size: 12.5px; line-height: 1.5; color: #4E4A33;
+}
+@keyframes print {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (max-width: 900px) {
+  .sheet { padding: 10px; }
+  .cols { grid-template-columns: 1fr; }
+  .top-copy { border-right: 1px solid var(--ink); border-bottom: none; }
+  .carbon { position: static; max-height: none; border-top: none; }
+  .fld { grid-template-columns: 1fr; gap: 3px; }
+  .mast-meta { gap: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .note { animation: none; }
+  .sheet * { transition: none !important; }
+}
+`;

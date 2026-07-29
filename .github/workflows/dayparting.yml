@@ -1,0 +1,61 @@
+# Dayparting scheduler.
+#
+# Vercel's free tier only allows once-daily crons, so the 15-minute job lives
+# here instead. The API route is an ordinary HTTP endpoint — anything that can
+# make a scheduled request will do.
+#
+# Hourly rather than every 15 minutes on purpose: business-hours dayparting
+# boundaries land on the hour anyway, and hourly keeps this inside the free
+# GitHub Actions allowance for private repositories (720 runs a month against
+# a 2,000 minute limit). Change to '*/15 * * * *' if you need finer control
+# and are happy to watch the usage.
+#
+# SETUP: add two repository secrets under
+# Settings → Secrets and variables → Actions
+#   SITE_URL     https://your-site.vercel.app
+#   CRON_SECRET  the same value as in your Vercel environment variables
+
+name: Scheduled jobs
+
+on:
+  # PAUSED until LinkedIn API access is in place.
+  # The schedule below is commented out so this does not run hourly and fail.
+  # To resume: uncomment the two schedule lines and push.
+  #
+  # schedule:
+  #   - cron: '0 * * * *'
+  workflow_dispatch:        # manual runs from the Actions tab still work
+
+jobs:
+  dayparting:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply dayparting schedule
+        run: |
+          response=$(curl --silent --show-error --fail-with-body \
+            --max-time 60 \
+            --header "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.SITE_URL }}/api/cron/dayparting")
+          echo "$response"
+          # Fail the run if the endpoint reported a problem, so GitHub emails you.
+          echo "$response" | grep -q '"ok":true' || exit 1
+
+  spend-alarm:
+    # Once a day is enough for budget pacing, so this only fires at 07:00.
+    if: github.event.schedule == '0 * * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check budget pacing
+        if: ${{ github.event_name == 'workflow_dispatch' || fromJSON(format('{0}', github.run_number)) > 0 }}
+        run: |
+          hour=$(date -u +%H)
+          if [ "$hour" != "07" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "Not 07:00 UTC — skipping."
+            exit 0
+          fi
+          response=$(curl --silent --show-error --fail-with-body \
+            --max-time 60 \
+            --header "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.SITE_URL }}/api/cron/spend-alarm")
+          echo "$response"
+          echo "$response" | grep -q '"ok":true' || exit 1

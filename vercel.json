@@ -1,0 +1,4 @@
+{
+  "$comment": "Scheduled jobs are paused until LinkedIn API access is in place. To resume, uncomment the crons below and redeploy. Note Vercel's free tier only permits once-daily crons.",
+  "crons": []
+}

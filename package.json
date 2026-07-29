@@ -1,0 +1,21 @@
+{
+  "name": "linkedin-ads-toolkit",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Planning, QA and reporting tools for LinkedIn Ads",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "15.5.22",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "jspdf": "4.2.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

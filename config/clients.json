@@ -1,0 +1,13 @@
+{
+  "spreadsheetId": "",
+  "combinedTab": "All clients",
+  "perClientTabs": true,
+  "windowDays": 90,
+  "clients": [
+    {
+      "name": "Example client",
+      "accountId": "512345678",
+      "enabled": false
+    }
+  ]
+}

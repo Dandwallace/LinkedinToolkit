@@ -1,0 +1,10 @@
+{
+  "accounts": [
+    {
+      "label": "Example client",
+      "accountId": "512345678",
+      "monthlyCap": 10000,
+      "tolerance": 0.15
+    }
+  ]
+}
