@@ -138,6 +138,21 @@ const FORMAT_KEYS = Object.keys(FORMATS);
 let uid = 0;
 const nextId = () => `c${++uid}`;
 
+/* Campaign objectives available in LinkedIn Campaign Manager. The "Follow"
+ * company button is only offered on the top-of-funnel objectives — LinkedIn
+ * withholds it from the conversion-focused ones. */
+const CAMPAIGN_OBJECTIVES = [
+  'Brand awareness', 'Website visits', 'Engagement', 'Video views',
+  'Lead generation', 'Website conversions', 'Job applicants',
+];
+const FOLLOW_ELIGIBLE_OBJECTIVES = new Set(['Brand awareness', 'Engagement', 'Video views']);
+
+function canShowFollowButton(item) {
+  return FORMATS[item.format].preview === 'feed'
+    && item.format !== 'Thought leader'
+    && FOLLOW_ELIGIBLE_OBJECTIVES.has(item.campaignObjective);
+}
+
 const truncate = (t, at) =>
   !t ? { shown: '', cut: false } : t.length <= at ? { shown: t, cut: false } : { shown: t.slice(0, at).trimEnd(), cut: true };
 
@@ -400,7 +415,7 @@ function buildPdf(jsPDF, brief, items) {
 export default function CreativeBrief() {
   const [brief, setBrief] = useState({ client: '', campaign: '', deadline: '', notes: '' });
   const [items, setItems] = useState([
-    { id: nextId(), format: 'Single image', copy: {}, carouselCta: 'Landing page', quantity: 1, notes: '', followButton: true },
+    { id: nextId(), format: 'Single image', copy: {}, carouselCta: 'Landing page', quantity: 1, notes: '', campaignObjective: 'Brand awareness' },
   ]);
   const [activeId, setActiveId] = useState(null);
 
@@ -425,8 +440,7 @@ export default function CreativeBrief() {
     setItems((p) => p.map((i) => (i.id === id ? { ...i, quantity: Math.min(20, Math.max(1, i.quantity + delta)) } : i)));
 
   const addItem = (format) => {
-    const followButton = FORMATS[format].preview === 'feed' && format !== 'Thought leader';
-    const it = { id: nextId(), format, copy: {}, carouselCta: 'Landing page', quantity: 1, notes: '', followButton };
+    const it = { id: nextId(), format, copy: {}, carouselCta: 'Landing page', quantity: 1, notes: '', campaignObjective: 'Brand awareness' };
     setItems((p) => [...p, it]);
     setActiveId(it.id);
   };
@@ -562,11 +576,19 @@ export default function CreativeBrief() {
                     </div>
                   )}
                   {spec.preview === 'feed' && active.format !== 'Thought leader' && (
-                    <label className="follow-toggle">
-                      <input type="checkbox" checked={!!active.followButton}
-                        onChange={(e) => setItem(active.id, { followButton: e.target.checked })} />
-                      <span>Show &quot;+ Follow&quot; button next to the Page name</span>
-                    </label>
+                    <div className="follow-row">
+                      <label className="row"><span className="row-label">Campaign objective</span>
+                        <select className="inp" value={active.campaignObjective}
+                          onChange={(e) => setItem(active.id, { campaignObjective: e.target.value })}>
+                          {CAMPAIGN_OBJECTIVES.map((o) => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      </label>
+                      <p className="fld-note">
+                        {canShowFollowButton(active)
+                          ? 'This objective supports the "+ Follow" button — it will appear next to the Page name.'
+                          : 'This objective doesn’t support the "+ Follow" button. LinkedIn only enables it for Brand awareness, Engagement and Video views campaigns.'}
+                      </p>
+                    </div>
                   )}
                   {activeFields.map((f) => {
                     const v = active.copy[f.key] || '';
@@ -614,7 +636,7 @@ export default function CreativeBrief() {
                           <div className="post-name">{brief.client || 'Client name'}</div>
                           <div className="post-sub">Promoted</div>
                         </div>
-                        {active.followButton && active.format !== 'Thought leader' && (
+                        {canShowFollowButton(active) && (
                           <button type="button" className="post-follow" disabled>+ Follow</button>
                         )}
                       </div>
@@ -775,9 +797,8 @@ const CSS = `
 .post-sub{font-size:10.5px;color:#7A7A72;}
 .post-follow{flex:none;font-family:inherit;font-size:12.5px;font-weight:600;color:#0A66C2;
   background:none;border:none;padding:4px 2px;cursor:default;white-space:nowrap;}
-.follow-toggle{display:flex;align-items:center;gap:7px;padding-bottom:11px;margin-bottom:11px;
-  border-bottom:1px solid var(--rule);font-size:12.5px;color:var(--ink-2);cursor:pointer;}
-.follow-toggle input{cursor:pointer;}
+.follow-row{padding-bottom:11px;margin-bottom:11px;border-bottom:1px solid var(--rule);}
+.follow-row .fld-note{margin-top:6px;}
 .post-body{margin:0;padding:0 12px 9px;font-size:12.5px;line-height:1.5;
   white-space:pre-wrap;word-break:break-word;}
 .more{color:#7A7A72;margin-left:3px;}
