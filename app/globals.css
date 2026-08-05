@@ -70,8 +70,13 @@ body{
   font-family:'Courier Prime',monospace;font-size:11px;letter-spacing:0;
   background:var(--stamp);color:var(--white);padding:1px 7px;margin-left:8px;
 }
+/* Hairlines come from overlapping outlines rather than a background showing
+ * through 1px gaps. Same look, but a row that does not divide evenly by the
+ * column count leaves white space rather than a block of grid background —
+ * nine tools in four columns used to end on a grey slab. */
 .index-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:1px;
-  background:var(--rule);border:1px solid var(--rule);}
+  padding:1px;}
+.index-grid .card{outline:1px solid var(--rule);}
 .card{
   background:var(--white);padding:14px 16px 16px;text-decoration:none;color:inherit;
   display:block;transition:background .12s;
@@ -85,7 +90,8 @@ body{
 
 /* ---- client health ---- */
 .client-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1px;
-  background:var(--rule);border:1px solid var(--rule);}
+  padding:1px;}
+.client-grid .cl{outline:1px solid var(--rule);}
 .cl{background:var(--white);padding:13px 16px 12px;}
 .cl-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;}
 .cl-name{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:16px;
