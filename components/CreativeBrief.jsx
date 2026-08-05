@@ -10,7 +10,7 @@ const FORMATS = {
     fields: [
       { key: 'intro', label: 'Introductory text', limit: 600, visible: 150, rows: 4 },
       { key: 'headline', label: 'Headline', limit: 200, visible: 70, rows: 2 },
-      { key: 'description', label: 'Description', limit: 70, visible: 70, rows: 2, note: 'Required only when LinkedIn Audience Network is enabled' },
+      { key: 'description', label: 'Description', limit: 70, visible: 70, rows: 2 },
     ],
     asset: { ratios: ['1:1 — 1200×1200 (recommended)', '1.91:1 — 1200×627', '4:5 — 720×900 (mobile only)'], size: '5 MB', types: 'JPG, PNG, GIF (non-animated)' },
     notes: [
@@ -135,6 +135,13 @@ const FORMATS = {
 };
 
 const FORMAT_KEYS = Object.keys(FORMATS);
+
+/* The objective changes what LinkedIn renders around the ad, not just how
+ * it is bought. Engagement is the only one of the three that gets a Follow
+ * button on the post — briefing a designer without knowing that is how you
+ * end up with a layout that has no room for it. */
+const OBJECTIVES = ['Brand awareness', 'Engagement', 'Website visits'];
+const FOLLOW_OBJECTIVE = 'Engagement';
 let uid = 0;
 const nextId = () => `c${++uid}`;
 
@@ -209,6 +216,7 @@ function buildPdf(jsPDF, brief, items) {
 
   const meta = [
     ['Prepared', new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })],
+    brief.objective ? ['Objective', brief.objective] : null,
     brief.deadline ? ['Assets needed', new Date(brief.deadline + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })] : null,
     ['Creatives', String(items.length)],
     ['Assets to produce', String(items.reduce((n, i) => n + (Number(i.quantity) || 0), 0))],
@@ -398,7 +406,13 @@ function buildPdf(jsPDF, brief, items) {
 /* ------------------------------------------------------------------ */
 
 export default function CreativeBrief() {
-  const [brief, setBrief] = useState({ client: '', campaign: '', deadline: '', notes: '' });
+  const [brief, setBrief] = useState({
+    client: '',
+    campaign: '',
+    objective: OBJECTIVES[0],
+    deadline: '',
+    notes: '',
+  });
   const [items, setItems] = useState([
     { id: nextId(), format: 'Single image', copy: {}, carouselCta: 'Landing page', quantity: 1, notes: '' },
   ]);
@@ -496,6 +510,21 @@ export default function CreativeBrief() {
                 <label className="row"><span className="row-label">Campaign</span>
                   <input className="inp" value={brief.campaign} placeholder="—"
                     onChange={(e) => setBrief((p) => ({ ...p, campaign: e.target.value }))} /></label>
+                <div className="row obj-row">
+                  <span className="row-label">Campaign objective</span>
+                  <span className="obj">
+                    {OBJECTIVES.map((o) => (
+                      <button
+                        key={o}
+                        type="button"
+                        className={brief.objective === o ? 'obj-b on' : 'obj-b'}
+                        onClick={() => setBrief((p) => ({ ...p, objective: o }))}
+                      >
+                        {o}
+                      </button>
+                    ))}
+                  </span>
+                </div>
                 <label className="row"><span className="row-label">Assets needed by</span>
                   <input className="inp" type="date" value={brief.deadline}
                     onChange={(e) => setBrief((p) => ({ ...p, deadline: e.target.value }))} /></label>
@@ -597,7 +626,10 @@ export default function CreativeBrief() {
             {active && (
               <>
                 <div className="pv-wrap">
-                  <div className="pv-head">As it renders in feed</div>
+                  <div className="pv-head">
+                    As it renders in feed
+                    <span className="pv-obj">{brief.objective}</span>
+                  </div>
                   {spec.preview === 'feed' && (
                     <div className="post">
                       <div className="post-top">
@@ -606,6 +638,12 @@ export default function CreativeBrief() {
                           <div className="post-name">{brief.client || 'Client name'}</div>
                           <div className="post-sub">Promoted</div>
                         </div>
+                        {/* LinkedIn only adds Follow on Engagement campaigns. */}
+                        {brief.objective === FOLLOW_OBJECTIVE && (
+                          <button type="button" className="post-follow" disabled>
+                            + Follow
+                          </button>
+                        )}
                       </div>
                       <p className="post-body">
                         {introT.shown || <span className="ph">Introductory text appears here…</span>}
@@ -623,6 +661,13 @@ export default function CreativeBrief() {
                         </div>
                       )}
                     </div>
+                  )}
+                  {spec.preview === 'feed' && (
+                    <p className="pv-note">
+                      {brief.objective === FOLLOW_OBJECTIVE
+                        ? 'Engagement campaigns carry a Follow button beside the page name. Leave room for it — it sits over the top-right of the post header.'
+                        : `No Follow button on ${brief.objective.toLowerCase()} campaigns. LinkedIn only adds it for Engagement.`}
+                    </p>
                   )}
                   {spec.preview === 'rail' && (
                     <div className="rail">
@@ -752,11 +797,25 @@ const CSS = `
 .meter-fill{height:100%;background:var(--carbon);transition:width .12s linear;}
 .meter-mark{position:absolute;top:-2px;right:0;width:1px;height:7px;background:var(--stamp);}
 .fld-note{margin:5px 0 0;font-size:10.5px;line-height:1.45;color:var(--carbon);opacity:.85;}
+.obj-row{align-items:flex-start;}
+.obj{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;}
+.obj-b{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:9px;
+  letter-spacing:.1em;text-transform:uppercase;padding:5px 9px;background:none;
+  border:1px solid var(--rule);color:var(--ink-2);cursor:pointer;white-space:nowrap;}
+.obj-b:hover{background:#F1F0EA;color:var(--ink);}
+.obj-b.on{background:var(--carbon);color:var(--white);border-color:var(--carbon);}
+.obj-b:focus-visible{outline:2px solid var(--carbon);outline-offset:2px;}
 .pv-wrap{padding:14px 16px 16px;border-bottom:1px solid var(--rule-2);}
-.pv-head{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:10px;
+.pv-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:10px;
   letter-spacing:.16em;text-transform:uppercase;color:#93803C;margin-bottom:9px;}
+.pv-obj{letter-spacing:0;text-transform:none;font-weight:400;
+  font-family:'Courier Prime',monospace;font-size:10.5px;}
+.pv-note{margin:8px 0 0;font-size:10.5px;line-height:1.5;color:#93803C;max-width:420px;}
 .post{background:#fff;border:1px solid #E0DCC8;max-width:420px;}
 .post-top{display:flex;align-items:center;gap:8px;padding:10px 12px 7px;}
+.post-follow{margin-left:auto;align-self:flex-start;flex:none;font-size:11.5px;font-weight:600;
+  color:#3A3F7A;background:none;border:none;padding:2px 4px;}
 .avatar{width:34px;height:34px;background:#DCE0EC;border-radius:50%;flex:none;}
 .avatar.sm{width:24px;height:24px;}
 .post-name{font-size:12.5px;font-weight:600;}

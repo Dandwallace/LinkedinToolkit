@@ -66,6 +66,10 @@ body{
   letter-spacing:.18em;text-transform:uppercase;color:var(--carbon);
   margin:26px 0 10px;padding-bottom:5px;border-bottom:1px solid var(--ink);
 }
+.index-group .group-count{
+  font-family:'Courier Prime',monospace;font-size:11px;letter-spacing:0;
+  background:var(--stamp);color:var(--white);padding:1px 7px;margin-left:8px;
+}
 .index-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:1px;
   background:var(--rule);border:1px solid var(--rule);}
 .card{
@@ -73,7 +77,60 @@ body{
   display:block;transition:background .12s;
 }
 .card:hover{background:#F5F4FA;}
+.card-top{display:flex;align-items:center;justify-content:space-between;
+  color:var(--carbon);margin-bottom:6px;}
+.card .tool-icon{opacity:.85;}
+.card:hover .tool-icon{opacity:1;}
 .card-form{font-family:'Courier Prime',monospace;font-size:11px;color:var(--carbon);}
+
+/* ---- client health ---- */
+.client-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1px;
+  background:var(--rule);border:1px solid var(--rule);}
+.cl{background:var(--white);padding:13px 16px 12px;}
+.cl-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;}
+.cl-name{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:16px;
+  text-transform:uppercase;letter-spacing:.04em;margin:0;}
+.cl-total{font-family:'Courier Prime',monospace;font-size:11px;color:var(--ink-2);}
+.cl-bar{display:flex;height:8px;background:#E6E4DA;margin:10px 0 11px;overflow:hidden;}
+.cl-bar .seg{display:block;height:100%;}
+.seg.healthy{background:var(--ok);}
+.seg.flagged{background:var(--stamp);}
+.seg.paused{background:#B6B4A9;}
+.seg.empty{width:100%;background:repeating-linear-gradient(
+  135deg,#E6E4DA,#E6E4DA 4px,#DEDCD1 4px,#DEDCD1 8px);}
+.cl-counts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0;}
+.cl-count dt{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:9px;
+  letter-spacing:.15em;text-transform:uppercase;color:var(--ink-2);margin-bottom:2px;}
+.cl-count dd{font-family:'Courier Prime',monospace;font-weight:700;font-size:19px;
+  margin:0;line-height:1;}
+.cl-count.healthy dd{color:var(--ok);}
+.cl-count.flagged dd{color:var(--stamp);}
+.cl-count.paused dd{color:var(--ink-2);}
+.cl-foot{margin-top:11px;padding-top:8px;border-top:1px dotted var(--rule);
+  font-family:'Courier Prime',monospace;font-size:10.5px;color:var(--ink-2);}
+.cl-foot a{color:var(--carbon);}
+
+/* ---- needs looking at ---- */
+.attn-empty{margin:0;padding:13px 15px;background:var(--white);border:1px solid var(--rule);
+  font-size:12.5px;line-height:1.55;color:var(--ink-2);}
+.attn-empty.ok{border-left:3px solid var(--ok);color:#255740;background:#F4F7F2;}
+.attn-empty a{color:var(--carbon);}
+.attn{list-style:none;margin:0;padding:0;border:1px solid var(--rule);background:var(--rule);
+  display:grid;gap:1px;}
+.attn-row{background:var(--white);padding:11px 15px 12px;}
+.attn-head{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;}
+.attn-client{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:9px;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--white);background:var(--carbon);
+  padding:2px 6px;}
+.attn-name{font-size:13.5px;font-weight:600;flex:1;min-width:160px;word-break:break-word;}
+.attn-spend{font-family:'Courier Prime',monospace;font-size:12.5px;color:var(--ink-2);}
+.attn-flags{list-style:none;margin:7px 0 0;padding:0;}
+.attn-flag{font-size:12px;line-height:1.5;color:#4E4A33;padding:5px 0 5px 10px;
+  border-left:3px solid var(--amber);margin-top:5px;background:#FBF6EC;}
+.attn-flag.urgent{border-left-color:var(--stamp);background:#F9EDE9;color:#7A3B22;}
+.attn-flag-label{font-family:'Courier Prime',monospace;font-weight:700;font-size:11.5px;
+  display:block;color:var(--ink);}
+.attn-flag.urgent .attn-flag-label{color:var(--stamp);}
 .card-name{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:15px;
   text-transform:uppercase;letter-spacing:.03em;margin:3px 0 4px;}
 .card-blurb{font-size:12px;line-height:1.45;color:var(--ink-2);}

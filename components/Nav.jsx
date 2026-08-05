@@ -7,8 +7,8 @@ import { installStorageShim, storage } from '@/lib/storage';
 import { TOOLS, API_TOOLS, SETUP } from '@/lib/tools';
 
 /**
- * The storage shim is installed here, before any tool renders, because nine
- * components call window.storage during their first effect. Installing it in
+ * The storage shim is installed here, before any tool renders, because the
+ * tool components call window.storage during their first effect. Installing it in
  * a page-level component would be too late for whichever tool loaded first.
  */
 export default function Nav() {

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { downloadBriefPdf } from '@/lib/brief-pdf';
 
 /* ------------------------------------------------------------------ *
  * Benchmark data.
@@ -356,6 +357,8 @@ export default function IntakeForm() {
   const [b, setB] = useState(EMPTY);
   const [saved, setSaved] = useState('');
   const [copied, setCopied] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [airtable, setAirtable] = useState({ state: 'idle', message: '', url: null });
   const loaded = useRef(false);
 
   const set = (k) => (v) => setB((prev) => ({ ...prev, [k]: v }));
@@ -408,6 +411,40 @@ export default function IntakeForm() {
     navigator.clipboard?.writeText(lines.join('\n'));
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
+  };
+
+  const exportPdf = async () => {
+    setExporting(true);
+    try {
+      await downloadBriefPdf(b, notes, fc);
+    } catch (err) {
+      setAirtable({ state: 'error', message: `Could not build the PDF: ${err.message}`, url: null });
+    }
+    setExporting(false);
+  };
+
+  /* The Airtable token is a write credential for the whole base, so the
+   * write happens server-side. The browser only ever sends the brief. */
+  const saveToAirtable = async () => {
+    setAirtable({ state: 'saving', message: 'Saving…', url: null });
+    try {
+      const res = await fetch('/api/airtable/brief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brief: b,
+          flags: notes.map((n) => `[${n.level.toUpperCase()}] ${n.title} — ${n.body}`).join('\n'),
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) {
+        setAirtable({ state: 'error', message: json.error || `Failed (${res.status})`, url: null });
+        return;
+      }
+      setAirtable({ state: 'done', message: 'Saved to Airtable', url: json.url });
+    } catch (err) {
+      setAirtable({ state: 'error', message: `Could not reach the server: ${err.message}`, url: null });
+    }
   };
 
   const money = (n) =>
@@ -590,7 +627,18 @@ export default function IntakeForm() {
             </Section>
 
             <footer className="foot">
-              <button type="button" className="btn" onClick={copy}>
+              <button type="button" className="btn" onClick={exportPdf} disabled={exporting}>
+                {exporting ? 'Building…' : 'Download PDF'}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={saveToAirtable}
+                disabled={airtable.state === 'saving'}
+              >
+                {airtable.state === 'saving' ? 'Saving…' : 'Save to Airtable'}
+              </button>
+              <button type="button" className="btn ghost" onClick={copy}>
                 {copied ? 'Copied' : 'Copy brief'}
               </button>
               <button
@@ -604,6 +652,20 @@ export default function IntakeForm() {
               </button>
               <span className="save">{saved ? `Saved ${saved}` : 'Saving…'}</span>
             </footer>
+
+            {airtable.state !== 'idle' && airtable.state !== 'saving' && (
+              <p className={`airtable-msg${airtable.state === 'error' ? ' bad' : ''}`}>
+                {airtable.message}
+                {airtable.url && (
+                  <>
+                    {' — '}
+                    <a href={airtable.url} target="_blank" rel="noreferrer">
+                      open the record
+                    </a>
+                  </>
+                )}
+              </p>
+            )}
           </div>
 
           {/* ---------------- carbon copy: what it implies ---------------- */}
@@ -834,10 +896,18 @@ const CSS = `
 .tick:focus-visible { outline: 2px solid var(--carbon); outline-offset: 2px; }
 /* ---- footer ---- */
 .foot {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 14px 22px; border-top: 1px solid var(--ink);
   background: #F3F2EC;
 }
+.btn:disabled { opacity: .45; cursor: default; }
+.airtable-msg {
+  margin: 0; padding: 10px 22px 13px; background: #F3F2EC;
+  border-top: 1px dotted var(--rule);
+  font-size: 12px; line-height: 1.5; color: var(--ok);
+}
+.airtable-msg.bad { color: var(--stamp); }
+.airtable-msg a { color: var(--carbon); }
 .btn {
   font-family: 'Archivo Narrow', sans-serif; font-weight: 700;
   font-size: 11px; letter-spacing: .13em; text-transform: uppercase;

@@ -1,192 +1,73 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
+import { parseExportFile } from '@/lib/parse-export';
+import { CLIENTS, saveClientData } from '@/lib/client-store';
 
-/* ------------------------------------------------------------------ *
- * CSV parsing
- *
- * Written by hand rather than pulling a library, mostly so the quirks of
- * real Campaign Manager exports can be handled inline: preamble rows
- * above the header, tab delimiters when pasted from Sheets, currency
- * symbols inside numeric cells.
- * ------------------------------------------------------------------ */
-
-function detectDelimiter(text) {
-  const line = text.split('\n').find((l) => l.trim()) || '';
-  const commas = (line.match(/,/g) || []).length;
-  const tabs = (line.match(/\t/g) || []).length;
-  return tabs > commas ? '\t' : ',';
-}
-
-function parseCSV(text, delim) {
-  const rows = [];
-  let row = [];
-  let field = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inQuotes) {
-      if (c === '"' && text[i + 1] === '"') {
-        field += '"';
-        i++;
-      } else if (c === '"') {
-        inQuotes = false;
-      } else {
-        field += c;
-      }
-      continue;
-    }
-    if (c === '"') inQuotes = true;
-    else if (c === delim) {
-      row.push(field);
-      field = '';
-    } else if (c === '\n') {
-      row.push(field);
-      rows.push(row);
-      row = [];
-      field = '';
-    } else if (c !== '\r') {
-      field += c;
-    }
-  }
-  if (field !== '' || row.length) {
-    row.push(field);
-    rows.push(row);
-  }
-  return rows.filter((r) => r.some((c) => c.trim() !== ''));
-}
-
-/* Column detection. LinkedIn's export headers shift between report types
- * and have changed more than once, so match loosely and let the user
- * correct anything that lands wrong. */
-const COLUMN_RULES = [
-  { key: 'date', label: 'Date', re: /^(date|day|start date)/i, required: true },
-  { key: 'campaign', label: 'Campaign', re: /campaign\s*name|^campaign$/i },
-  { key: 'creative', label: 'Creative / Ad', re: /creative|ad\s*name/i },
-  { key: 'impressions', label: 'Impressions', re: /impression/i, required: true, numeric: true },
-  { key: 'clicks', label: 'Clicks', re: /^(total\s*)?clicks$/i, required: true, numeric: true },
-  { key: 'spend', label: 'Spend', re: /spent|spend|^cost$|amount/i, required: true, numeric: true },
-  { key: 'leads', label: 'Leads', re: /lead/i, numeric: true },
-  { key: 'conversions', label: 'Conversions', re: /conversion/i, numeric: true },
-];
-
-/** Finds the header row — real exports often carry account metadata above it. */
-function findHeaderRow(rows) {
-  for (let i = 0; i < Math.min(rows.length, 15); i++) {
-    const hits = COLUMN_RULES.filter((r) => rows[i].some((c) => r.re.test(c.trim()))).length;
-    if (hits >= 3) return i;
-  }
-  return 0;
-}
-
-const toNumber = (v) => {
-  if (v == null) return 0;
-  const cleaned = String(v).replace(/[^0-9.\-]/g, '');
-  const n = parseFloat(cleaned);
-  return Number.isFinite(n) ? n : 0;
-};
-
-const toDate = (v) => {
-  if (!v) return null;
-  const s = String(v).trim();
-  /* ISO first, then UK day-first, then let Date have a go. */
-  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
-  if (m) return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
-  m = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/.exec(s);
-  if (m) return new Date(Date.UTC(+m[3], +m[2] - 1, +m[1]));
-  const d = new Date(s);
-  return Number.isNaN(d.getTime()) ? null : d;
-};
+/* Parsing lives in lib/parse-export.js — the dashboard and this page have
+ * to agree on what a Campaign Manager export means, and two copies of the
+ * column rules would drift apart within a month. */
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-/* ------------------------------------------------------------------ */
-
 export default function PerformanceAnalyser() {
-  const [raw, setRaw] = useState('');
-  const [overrides, setOverrides] = useState({});
+  const [parsed, setParsed] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [currency, setCurrency] = useState('£');
+  const [client, setClient] = useState(CLIENTS[0].id);
+  const [savedTo, setSavedTo] = useState(null);
+  const inputRef = useRef(null);
 
-  const parsed = useMemo(() => {
-    if (!raw.trim()) return null;
-    const delim = detectDelimiter(raw);
-    const rows = parseCSV(raw, delim);
-    if (rows.length < 2) return { error: 'Could not find at least a header row and one data row.' };
-
-    const headerIdx = findHeaderRow(rows);
-    const header = rows[headerIdx].map((h) => h.trim());
-    const body = rows.slice(headerIdx + 1).filter((r) => r.length >= 2);
-
-    const mapping = {};
-    for (const rule of COLUMN_RULES) {
-      const found = header.findIndex((h) => rule.re.test(h));
-      mapping[rule.key] = overrides[rule.key] !== undefined ? overrides[rule.key] : found;
+  const handleFile = useCallback(async (file) => {
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    setSavedTo(null);
+    try {
+      const result = await parseExportFile(file);
+      if (!result.ok) {
+        setParsed(null);
+        setError(result.error);
+      } else {
+        setParsed(result);
+      }
+    } catch (err) {
+      setParsed(null);
+      setError(`Could not read that file: ${err.message}`);
     }
+    setBusy(false);
+  }, []);
 
-    const missing = COLUMN_RULES.filter((r) => r.required && mapping[r.key] < 0);
-    if (missing.length) {
-      return {
-        error: `Could not find these columns: ${missing.map((m) => m.label).join(', ')}. Map them manually below.`,
-        header,
-        mapping,
-        body,
-      };
+  const onDrop = (e) => {
+    e.preventDefault();
+    setDragging(false);
+    handleFile(e.dataTransfer.files?.[0]);
+  };
+
+  const save = async () => {
+    try {
+      await saveClientData(client, parsed);
+      setSavedTo(CLIENTS.find((c) => c.id === client).name);
+    } catch (err) {
+      setError(`Could not save: ${err.message}`);
     }
+  };
 
-    const records = body
+  /* ---------- records: the dated rows, for the time-based sections ---------- */
+  const records = useMemo(() => {
+    if (!parsed?.ok) return null;
+    const out = parsed.rows
+      .filter((r) => r.date)
       .map((r) => {
-        const get = (k) => (mapping[k] >= 0 ? r[mapping[k]] : undefined);
-        const d = toDate(get('date'));
-        if (!d) return null;
-        return {
-          date: d,
-          dow: d.getUTCDay(),
-          campaign: (get('campaign') || 'All campaigns').trim(),
-          creative: (get('creative') || '').trim(),
-          impressions: toNumber(get('impressions')),
-          clicks: toNumber(get('clicks')),
-          spend: toNumber(get('spend')),
-          leads: toNumber(get('leads')),
-          conversions: toNumber(get('conversions')),
-        };
-      })
-      .filter(Boolean);
+        const d = new Date(`${r.date}T00:00:00Z`);
+        return { ...r, d, dow: d.getUTCDay() };
+      });
+    return out.length ? out : null;
+  }, [parsed]);
 
-    if (!records.length) {
-      return { error: 'Found columns but no rows with a readable date.', header, mapping, body };
-    }
-    return { header, mapping, records };
-  }, [raw, overrides]);
-
-  const records = parsed?.records;
-
-  /* ---------- totals ---------- */
-  const totals = useMemo(() => {
-    if (!records) return null;
-    const t = records.reduce(
-      (a, r) => ({
-        impressions: a.impressions + r.impressions,
-        clicks: a.clicks + r.clicks,
-        spend: a.spend + r.spend,
-        leads: a.leads + r.leads,
-        conversions: a.conversions + r.conversions,
-      }),
-      { impressions: 0, clicks: 0, spend: 0, leads: 0, conversions: 0 }
-    );
-    const dates = records.map((r) => r.date.getTime());
-    return {
-      ...t,
-      ctr: t.impressions ? (t.clicks / t.impressions) * 100 : 0,
-      cpc: t.clicks ? t.spend / t.clicks : 0,
-      cpm: t.impressions ? (t.spend / t.impressions) * 1000 : 0,
-      cpl: t.leads ? t.spend / t.leads : 0,
-      from: new Date(Math.min(...dates)),
-      to: new Date(Math.max(...dates)),
-      days: new Set(records.map((r) => r.date.toISOString().slice(0, 10))).size,
-      campaigns: new Set(records.map((r) => r.campaign)).size,
-    };
-  }, [records]);
+  const totals = parsed?.ok ? parsed.totals : null;
 
   /* ---------- day of week ---------- */
   const dow = useMemo(() => {
@@ -237,18 +118,19 @@ export default function PerformanceAnalyser() {
 
   /* ---------- fatigue: first half vs second half CTR ---------- */
   const fatigue = useMemo(() => {
-    if (!records || !totals) return null;
+    if (!records) return null;
+    const times = records.map((r) => r.d.getTime());
+    const mid = (Math.min(...times) + Math.max(...times)) / 2;
     const groups = new Map();
     for (const r of records) {
       const key = r.creative || r.campaign;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(r);
     }
-    const mid = (totals.from.getTime() + totals.to.getTime()) / 2;
     const out = [];
     for (const [name, rows] of groups) {
-      const first = rows.filter((r) => r.date.getTime() <= mid);
-      const second = rows.filter((r) => r.date.getTime() > mid);
+      const first = rows.filter((r) => r.d.getTime() <= mid);
+      const second = rows.filter((r) => r.d.getTime() > mid);
       const imp1 = first.reduce((n, r) => n + r.impressions, 0);
       const imp2 = second.reduce((n, r) => n + r.impressions, 0);
       if (imp1 < 500 || imp2 < 500) continue;
@@ -258,16 +140,15 @@ export default function PerformanceAnalyser() {
       out.push({ name, ctr1, ctr2, change: ((ctr2 - ctr1) / ctr1) * 100, imp: imp1 + imp2 });
     }
     return out.sort((a, b) => a.change - b.change);
-  }, [records, totals]);
+  }, [records]);
 
   /* ---------- anomalies: daily cost per outcome beyond 2 sd ---------- */
   const anomalies = useMemo(() => {
     if (!records) return null;
     const byDay = new Map();
     for (const r of records) {
-      const k = r.date.toISOString().slice(0, 10);
-      if (!byDay.has(k)) byDay.set(k, { spend: 0, clicks: 0, leads: 0, impressions: 0 });
-      const d = byDay.get(k);
+      if (!byDay.has(r.date)) byDay.set(r.date, { spend: 0, clicks: 0, leads: 0, impressions: 0 });
+      const d = byDay.get(r.date);
       d.spend += r.spend;
       d.clicks += r.clicks;
       d.leads += r.leads;
@@ -296,20 +177,29 @@ export default function PerformanceAnalyser() {
   const money = (n, dp = 2) =>
     currency + (n || 0).toLocaleString('en-GB', { minimumFractionDigits: dp, maximumFractionDigits: dp });
   const num = (n) => Math.round(n || 0).toLocaleString('en-GB');
-  const dstr = (d) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const dstr = (iso) =>
+    iso
+      ? new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        })
+      : '—';
 
   const summary = useMemo(() => {
-    if (!totals || !dow) return '';
+    if (!totals || !parsed?.ok) return '';
     const lines = [
-      `PERFORMANCE SUMMARY — ${dstr(totals.from)} to ${dstr(totals.to)}`,
+      `PERFORMANCE SUMMARY — ${parsed.from ? `${dstr(parsed.from)} to ${dstr(parsed.to)}` : 'aggregated export, no dates'}`,
       '',
-      `Spend ${money(totals.spend, 0)} across ${totals.campaigns} campaign(s) over ${totals.days} days.`,
+      `Spend ${money(totals.spend, 0)} across ${parsed.campaigns.length} campaign(s)${parsed.days ? ` over ${parsed.days} days` : ''}.`,
       `${num(totals.impressions)} impressions, ${num(totals.clicks)} clicks (${totals.ctr.toFixed(2)}% CTR), ${money(totals.cpc)} CPC, ${money(totals.cpm)} CPM.`,
       totals.leads ? `${num(totals.leads)} leads at ${money(totals.cpl)} cost per lead.` : '',
       '',
-      dow.wasted > 0
+      dow && dow.wasted > 0
         ? `Weekends took ${dow.wsPct.toFixed(1)}% of spend but produced ${dow.woPct.toFixed(1)}% of ${dow.useLeads ? 'leads' : 'clicks'} — roughly ${money(dow.wasted, 0)} underperforming. A weekday-only schedule is worth testing.`
-        : 'No material weekend waste in this period.',
+        : dow
+          ? 'No material weekend waste in this period.'
+          : '',
       '',
       fatigue && fatigue.filter((f) => f.change < -20).length
         ? `Fatigue: ${fatigue.filter((f) => f.change < -20).length} creative(s) lost more than 20% of CTR between the first and second half of the period.`
@@ -319,7 +209,7 @@ export default function PerformanceAnalyser() {
         : '',
     ];
     return lines.filter(Boolean).join('\n');
-  }, [totals, dow, fatigue, anomalies, currency]);
+  }, [totals, dow, fatigue, anomalies, currency, parsed]);
 
   return (
     <>
@@ -328,28 +218,28 @@ export default function PerformanceAnalyser() {
         <header className="masthead">
           <div>
             <div className="mast-eyebrow">LinkedIn Ads · Whitehart</div>
-            <h1 className="mast-title">Performance analysis</h1>
-            <div className="linked">From a Campaign Manager CSV export — no API access needed</div>
+            <h1 className="mast-title">CSV analysis</h1>
+            <div className="linked">Drop a Campaign Manager export in — nothing leaves this browser</div>
           </div>
           <dl className="mast-meta">
             <div>
               <dt>Form</dt>
               <dd>LA-08</dd>
             </div>
-            {totals && (
+            {parsed?.ok && (
               <div>
                 <dt>Rows</dt>
-                <dd>{records.length}</dd>
+                <dd>{parsed.rows.length}</dd>
               </div>
             )}
           </dl>
         </header>
 
         <div className="body">
-          {/* ---------------- input ---------------- */}
+          {/* ---------------- upload ---------------- */}
           <section className="block input-block">
             <div className="block-head">
-              Paste export
+              Upload export
               <span className="cur">
                 Currency
                 {['£', '€', '$'].map((c) => (
@@ -364,60 +254,150 @@ export default function PerformanceAnalyser() {
                 ))}
               </span>
             </div>
-            <textarea
-              className="ta"
-              rows={raw ? 4 : 8}
-              value={raw}
-              placeholder={
-                'Export from Campaign Manager, open it, select all, paste here.\n\nWorks with commas or tabs. Metadata rows above the header are skipped automatically.'
-              }
-              onChange={(e) => setRaw(e.target.value)}
-            />
-            {parsed?.error && (
+
+            <div
+              className={`drop${dragging ? ' over' : ''}${busy ? ' busy' : ''}`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={onDrop}
+              onClick={() => inputRef.current?.click()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  inputRef.current?.click();
+                }
+              }}
+              role="button"
+              tabIndex={0}
+            >
+              <span className="drop-main">
+                {busy ? 'Reading…' : dragging ? 'Drop it' : 'Drop the export here'}
+              </span>
+              <span className="drop-sub">
+                or click to choose a file · .csv, .tsv or the .xls Campaign Manager produces
+              </span>
+              <span className="drop-note">
+                The native export is tab-separated UTF-16 with metadata lines above the header.
+                That is handled — do not open and re-save it first.
+              </span>
+              <input
+                ref={inputRef}
+                type="file"
+                accept=".csv,.tsv,.txt,.xls,text/csv,text/plain"
+                className="drop-input"
+                onChange={(e) => {
+                  handleFile(e.target.files?.[0]);
+                  e.target.value = '';
+                }}
+              />
+            </div>
+
+            {error && (
               <div className="issue blocker">
                 <span className="issue-tag">Could not read</span>
-                {parsed.error}
-              </div>
-            )}
-            {parsed?.header && (
-              <div className="mapping">
-                <div className="map-head">Column mapping — correct anything wrong</div>
-                <div className="map-grid">
-                  {COLUMN_RULES.map((rule) => (
-                    <label className="map-row" key={rule.key}>
-                      <span className="map-lab">
-                        {rule.label}
-                        {rule.required && <em>*</em>}
-                      </span>
-                      <select
-                        className="map-sel"
-                        value={parsed.mapping[rule.key]}
-                        onChange={(e) =>
-                          setOverrides((p) => ({ ...p, [rule.key]: Number(e.target.value) }))
-                        }
-                      >
-                        <option value={-1}>— not present —</option>
-                        {parsed.header.map((h, i) => (
-                          <option key={i} value={i}>
-                            {h || `Column ${i + 1}`}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  ))}
-                </div>
+                {error}
               </div>
             )}
           </section>
 
-          {totals && (
+          {parsed?.ok && (
             <>
+              {/* ---------------- what was parsed ---------------- */}
+              <section className="block">
+                <div className="block-head">
+                  What was parsed
+                  <span className="range">{parsed.filename}</span>
+                </div>
+                <div className="stats">
+                  {[
+                    ['Encoding', parsed.encoding],
+                    ['Delimiter', parsed.delimiter],
+                    ['Header on line', String(parsed.metadataLines + 1)],
+                    ['Granularity', parsed.granularity],
+                    ['Rows', num(parsed.rows.length)],
+                    ['Campaigns', num(parsed.campaigns.length)],
+                    ['Days', parsed.days ? num(parsed.days) : '—'],
+                    ['Range', parsed.from ? `${parsed.from} → ${parsed.to}` : '—'],
+                  ].map(([l, v]) => (
+                    <div className="stat" key={l}>
+                      <span className="stat-lab">{l}</span>
+                      <span className="stat-val sm">{v}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="found">
+                  <span className="found-lab">Columns matched</span>
+                  <span className="found-list">
+                    {parsed.columns.map((c) => (
+                      <span className="tag" key={c}>
+                        {c}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+
+                {parsed.preamble.length > 0 && (
+                  <div className="found">
+                    <span className="found-lab">Skipped above the header</span>
+                    <span className="found-list mono">
+                      {parsed.preamble.map((p, i) => (
+                        <span key={i} className="pre-line">
+                          {p}
+                        </span>
+                      ))}
+                    </span>
+                  </div>
+                )}
+
+                {parsed.undated > 0 && (
+                  <p className="caveat">
+                    {parsed.undated} row{parsed.undated === 1 ? '' : 's'} carried no readable date.
+                    They count towards the totals but are left out of the day-of-week, fatigue and
+                    anomaly sections.
+                  </p>
+                )}
+
+                {/* ---------------- save against a client ---------------- */}
+                <div className="save-row">
+                  <span className="save-lab">Save against</span>
+                  <select
+                    className="save-sel"
+                    value={client}
+                    onChange={(e) => {
+                      setClient(e.target.value);
+                      setSavedTo(null);
+                    }}
+                  >
+                    {CLIENTS.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="button" className="btn" onClick={save}>
+                    Save
+                  </button>
+                  {savedTo && (
+                    <span className="saved">
+                      Saved to {savedTo} — health now shows on the dashboard. Saving again replaces
+                      it rather than adding to it.
+                    </span>
+                  )}
+                </div>
+              </section>
+
               {/* ---------------- totals ---------------- */}
               <section className="block">
                 <div className="block-head">
                   Totals
                   <span className="range">
-                    {dstr(totals.from)} — {dstr(totals.to)} · {totals.days} days
+                    {parsed.from
+                      ? `${dstr(parsed.from)} — ${dstr(parsed.to)} · ${parsed.days} days`
+                      : 'aggregated export'}
                   </span>
                 </div>
                 <div className="stats">
@@ -443,139 +423,157 @@ export default function PerformanceAnalyser() {
                 </div>
               </section>
 
-              {/* ---------------- day of week ---------------- */}
-              <section className="block">
-                <div className="block-head">
-                  Day of week
-                  <span className="range">the dayparting business case</span>
-                </div>
-                <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th>Day</th>
-                      <th>Spend</th>
-                      <th>% spend</th>
-                      <th>{dow.useLeads ? 'Leads' : 'Clicks'}</th>
-                      <th>% of total</th>
-                      <th>Cost per</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dow.rows.map((r) => {
-                      const gap = r.pctSpend - r.pctOutcome;
-                      return (
-                        <tr key={r.day} className={gap > 3 ? 'poor' : gap < -3 ? 'good' : ''}>
-                          <th>{r.day}</th>
-                          <td>{money(r.spend, 0)}</td>
-                          <td>{r.pctSpend.toFixed(1)}%</td>
-                          <td>{num(r.outcome)}</td>
-                          <td>{r.pctOutcome.toFixed(1)}%</td>
-                          <td>{r.cost ? money(r.cost) : '—'}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                <p className={`verdict ${dow.wasted > 0 ? 'warn' : 'ok'}`}>
-                  {dow.wasted > 0
-                    ? `Weekends absorbed ${dow.wsPct.toFixed(1)}% of spend and returned ${dow.woPct.toFixed(1)}% of ${dow.useLeads ? 'leads' : 'clicks'}. Roughly ${money(dow.wasted, 0)} underperformed over this period — that is the number to put in front of a client when proposing a schedule.`
-                    : 'No material weekend waste here. Dayparting would not pay for itself on this account.'}
-                </p>
-              </section>
-
-              {/* ---------------- fatigue ---------------- */}
-              <section className="block">
-                <div className="block-head">
-                  Creative fatigue
-                  <span className="range">CTR, first half vs second half</span>
-                </div>
-                {!fatigue?.length && (
+              {!records && (
+                <section className="block">
+                  <div className="block-head">Day of week, fatigue and anomalies</div>
                   <p className="none">
-                    Not enough volume to compare halves. Each item needs 500+ impressions in both
-                    halves of the period.
+                    This export is aggregated — one row per campaign, no dates. Re-export with a
+                    daily breakdown to get the dayparting case, creative fatigue and daily
+                    anomalies.
                   </p>
-                )}
-                {fatigue?.length > 0 && (
-                  <table className="tbl">
-                    <thead>
-                      <tr>
-                        <th>Creative / campaign</th>
-                        <th>Impressions</th>
-                        <th>CTR early</th>
-                        <th>CTR late</th>
-                        <th>Change</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {fatigue.map((f) => (
-                        <tr
-                          key={f.name}
-                          className={f.change < -20 ? 'poor' : f.change > 10 ? 'good' : ''}
-                        >
-                          <th>{f.name}</th>
-                          <td>{num(f.imp)}</td>
-                          <td>{f.ctr1.toFixed(2)}%</td>
-                          <td>{f.ctr2.toFixed(2)}%</td>
-                          <td>
-                            {f.change > 0 ? '+' : ''}
-                            {f.change.toFixed(1)}%
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-                <p className="caveat">
-                  A halving of the period is a blunt instrument, but it survives the sparse daily
-                  data most accounts produce. Treat a drop beyond 20% as worth rotating, not as proof.
-                </p>
-              </section>
+                </section>
+              )}
 
-              {/* ---------------- anomalies ---------------- */}
-              <section className="block">
-                <div className="block-head">
-                  Anomalies
-                  <span className="range">
-                    daily cost per {anomalies?.useLeads ? 'lead' : 'click'}, beyond 2 sd
-                  </span>
-                </div>
-                {anomalies?.tooShort && (
-                  <p className="none">Needs at least seven days of data to establish a baseline.</p>
-                )}
-                {!anomalies?.tooShort && !anomalies?.flagged.length && (
-                  <p className="none">
-                    Nothing beyond two standard deviations. Mean {money(anomalies.mean)}, standard
-                    deviation {money(anomalies.sd)}.
-                  </p>
-                )}
-                {anomalies?.flagged.length > 0 && (
-                  <table className="tbl">
-                    <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th>Spend</th>
-                        <th>{anomalies.useLeads ? 'Leads' : 'Clicks'}</th>
-                        <th>Cost per</th>
-                        <th>vs mean</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {anomalies.flagged.map((f) => (
-                        <tr key={f.date} className={f.dir === 'high' ? 'poor' : 'good'}>
-                          <th>{f.date}</th>
-                          <td>{money(f.spend, 0)}</td>
-                          <td>{num(f.outcome)}</td>
-                          <td>{money(f.value)}</td>
-                          <td>
-                            {f.value > f.mean ? '+' : ''}
-                            {(((f.value - f.mean) / f.mean) * 100).toFixed(0)}%
-                          </td>
+              {records && (
+                <>
+                  {/* ---------------- day of week ---------------- */}
+                  <section className="block">
+                    <div className="block-head">
+                      Day of week
+                      <span className="range">the dayparting business case</span>
+                    </div>
+                    <table className="tbl">
+                      <thead>
+                        <tr>
+                          <th>Day</th>
+                          <th>Spend</th>
+                          <th>% spend</th>
+                          <th>{dow.useLeads ? 'Leads' : 'Clicks'}</th>
+                          <th>% of total</th>
+                          <th>Cost per</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </section>
+                      </thead>
+                      <tbody>
+                        {dow.rows.map((r) => {
+                          const gap = r.pctSpend - r.pctOutcome;
+                          return (
+                            <tr key={r.day} className={gap > 3 ? 'poor' : gap < -3 ? 'good' : ''}>
+                              <th>{r.day}</th>
+                              <td>{money(r.spend, 0)}</td>
+                              <td>{r.pctSpend.toFixed(1)}%</td>
+                              <td>{num(r.outcome)}</td>
+                              <td>{r.pctOutcome.toFixed(1)}%</td>
+                              <td>{r.cost ? money(r.cost) : '—'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    <p className={`verdict ${dow.wasted > 0 ? 'warn' : 'ok'}`}>
+                      {dow.wasted > 0
+                        ? `Weekends absorbed ${dow.wsPct.toFixed(1)}% of spend and returned ${dow.woPct.toFixed(1)}% of ${dow.useLeads ? 'leads' : 'clicks'}. Roughly ${money(dow.wasted, 0)} underperformed over this period — that is the number to put in front of a client when proposing a schedule.`
+                        : 'No material weekend waste here. Dayparting would not pay for itself on this account.'}
+                    </p>
+                  </section>
+
+                  {/* ---------------- fatigue ---------------- */}
+                  <section className="block">
+                    <div className="block-head">
+                      Creative fatigue
+                      <span className="range">CTR, first half vs second half</span>
+                    </div>
+                    {!fatigue?.length && (
+                      <p className="none">
+                        Not enough volume to compare halves. Each item needs 500+ impressions in
+                        both halves of the period.
+                      </p>
+                    )}
+                    {fatigue?.length > 0 && (
+                      <table className="tbl">
+                        <thead>
+                          <tr>
+                            <th>Creative / campaign</th>
+                            <th>Impressions</th>
+                            <th>CTR early</th>
+                            <th>CTR late</th>
+                            <th>Change</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {fatigue.map((f) => (
+                            <tr
+                              key={f.name}
+                              className={f.change < -20 ? 'poor' : f.change > 10 ? 'good' : ''}
+                            >
+                              <th>{f.name}</th>
+                              <td>{num(f.imp)}</td>
+                              <td>{f.ctr1.toFixed(2)}%</td>
+                              <td>{f.ctr2.toFixed(2)}%</td>
+                              <td>
+                                {f.change > 0 ? '+' : ''}
+                                {f.change.toFixed(1)}%
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                    <p className="caveat">
+                      A halving of the period is a blunt instrument, but it survives the sparse
+                      daily data most accounts produce. Treat a drop beyond 20% as worth rotating,
+                      not as proof.
+                    </p>
+                  </section>
+
+                  {/* ---------------- anomalies ---------------- */}
+                  <section className="block">
+                    <div className="block-head">
+                      Anomalies
+                      <span className="range">
+                        daily cost per {anomalies?.useLeads ? 'lead' : 'click'}, beyond 2 sd
+                      </span>
+                    </div>
+                    {anomalies?.tooShort && (
+                      <p className="none">
+                        Needs at least seven days of data to establish a baseline.
+                      </p>
+                    )}
+                    {!anomalies?.tooShort && !anomalies?.flagged.length && (
+                      <p className="none">
+                        Nothing beyond two standard deviations. Mean {money(anomalies.mean)},
+                        standard deviation {money(anomalies.sd)}.
+                      </p>
+                    )}
+                    {anomalies?.flagged.length > 0 && (
+                      <table className="tbl">
+                        <thead>
+                          <tr>
+                            <th>Date</th>
+                            <th>Spend</th>
+                            <th>{anomalies.useLeads ? 'Leads' : 'Clicks'}</th>
+                            <th>Cost per</th>
+                            <th>vs mean</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {anomalies.flagged.map((f) => (
+                            <tr key={f.date} className={f.dir === 'high' ? 'poor' : 'good'}>
+                              <th>{f.date}</th>
+                              <td>{money(f.spend, 0)}</td>
+                              <td>{num(f.outcome)}</td>
+                              <td>{money(f.value)}</td>
+                              <td>
+                                {f.value > f.mean ? '+' : ''}
+                                {(((f.value - f.mean) / f.mean) * 100).toFixed(0)}%
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </section>
+                </>
+              )}
 
               {/* ---------------- summary ---------------- */}
               <section className="block">
@@ -612,27 +610,41 @@ const CSS = `
   border:1px solid var(--rule);color:var(--ink-2);cursor:pointer;}
 .cur-b.on{background:var(--carbon);color:var(--white);border-color:var(--carbon);}
 .cur-b:focus-visible{outline:2px solid var(--carbon);outline-offset:2px;}
-.ta{width:100%;font-family:'Courier Prime',monospace;font-size:12px;line-height:1.55;
-  color:var(--carbon);background:var(--white);border:1px solid var(--rule);padding:9px 11px;
-  border-radius:0;outline:none;resize:vertical;}
-.mapping{margin-top:12px;border-top:1px solid var(--rule);padding-top:11px;}
-.map-head{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:9.5px;
-  letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2);margin-bottom:8px;}
-.map-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:7px 16px;}
-.map-row{display:grid;grid-template-columns:96px 1fr;align-items:center;gap:8px;}
-.map-lab{font-family:'Archivo Narrow',sans-serif;font-weight:600;font-size:10px;
-  letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2);}
-.map-lab em{font-style:normal;color:var(--stamp);}
-.map-sel{font-family:'Courier Prime',monospace;font-size:11.5px;color:var(--carbon);
-  background:var(--white);border:1px solid var(--rule);padding:3px 5px;
-  border-radius:0;outline:none;width:100%;min-width:0;}
-.map-sel:focus-visible{outline:2px solid var(--carbon);outline-offset:1px;}
+.drop{display:flex;flex-direction:column;align-items:center;gap:5px;text-align:center;
+  padding:30px 20px;border:2px dashed var(--rule);background:var(--white);cursor:pointer;
+  transition:background .12s,border-color .12s;}
+.drop:hover{border-color:var(--carbon);background:#F8F7FC;}
+.drop.over{border-color:var(--carbon);background:#EDECF6;border-style:solid;}
+.drop.busy{opacity:.6;cursor:default;}
+.drop:focus-visible{outline:2px solid var(--carbon);outline-offset:2px;}
+.drop-main{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:15px;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--carbon);}
+.drop-sub{font-family:'Courier Prime',monospace;font-size:11.5px;color:var(--ink-2);}
+.drop-note{font-size:10.5px;line-height:1.5;color:var(--ink-2);max-width:420px;margin-top:4px;}
+.drop-input{display:none;}
 .stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));
   border-top:1px solid var(--rule);border-left:1px solid var(--rule);}
 .stat{padding:10px 12px;border-right:1px solid var(--rule);border-bottom:1px solid var(--rule);}
 .stat-lab{display:block;font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:9px;
   letter-spacing:.17em;text-transform:uppercase;color:var(--ink-2);margin-bottom:3px;}
 .stat-val{font-family:'Courier Prime',monospace;font-weight:700;font-size:17px;color:var(--carbon);}
+.stat-val.sm{font-size:12.5px;font-weight:400;color:var(--ink);word-break:break-word;}
+.found{display:flex;gap:12px;align-items:baseline;margin-top:11px;flex-wrap:wrap;}
+.found-lab{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:9px;
+  letter-spacing:.17em;text-transform:uppercase;color:var(--ink-2);width:150px;flex:none;}
+.found-list{display:flex;flex-wrap:wrap;gap:4px;flex:1;min-width:200px;}
+.found-list.mono{flex-direction:column;gap:2px;}
+.tag{font-family:'Courier Prime',monospace;font-size:11px;color:var(--carbon);
+  border:1px solid var(--rule);padding:1px 6px;background:#FBFAF6;}
+.pre-line{font-family:'Courier Prime',monospace;font-size:11px;color:var(--ink-2);}
+.save-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:14px;
+  padding-top:12px;border-top:1px solid var(--rule);}
+.save-lab{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:9.5px;
+  letter-spacing:.17em;text-transform:uppercase;color:var(--ink-2);}
+.save-sel{font-family:'Courier Prime',monospace;font-size:12.5px;color:var(--carbon);
+  background:var(--white);border:1px solid var(--rule);padding:6px 8px;border-radius:0;}
+.save-sel:focus-visible{outline:2px solid var(--carbon);outline-offset:1px;}
+.saved{font-size:11.5px;line-height:1.5;color:#255740;flex:1;min-width:220px;}
 .tbl thead th{text-align:right;font-family:'Archivo Narrow',sans-serif;font-weight:700;
   font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-2);
   padding:5px 8px 6px 0;border-bottom:1px solid var(--rule);}
@@ -660,7 +672,7 @@ const CSS = `
   .sheet{padding:10px;}
   .block{padding:12px 14px 16px;}
   .masthead{padding:14px 14px 12px;}
-  .map-row{grid-template-columns:1fr;gap:2px;}
+  .found-lab{width:auto;}
   .tbl thead th,.tbl tbody th,.tbl tbody td{font-size:11.5px;}
 }
 `;
