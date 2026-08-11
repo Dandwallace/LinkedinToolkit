@@ -551,7 +551,6 @@ export default function CreativeBrief() {
             <button type="button" className="btn" onClick={exportPdf} disabled={exporting}>
               {exporting ? 'Building…' : 'Download PDF'}
             </button>
-            <dl className="mast-meta"><dt>Form</dt><dd>LA-06</dd></dl>
           </div>
         </header>
 
@@ -826,7 +825,10 @@ export default function CreativeBrief() {
 }
 
 const CSS = `
-.masthead,.mast-right{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;}
+/* Width has to match .cols below, or the header runs past the body. */
+.masthead{max-width:1180px;margin:0 auto;display:flex;align-items:flex-end;
+  justify-content:space-between;gap:8px;flex-wrap:wrap;}
+.mast-right{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;}
 .mast-meta{margin:0 0 0 8px;text-align:right;}
 .btn{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:10.5px;
   letter-spacing:.13em;text-transform:uppercase;padding:9px 16px;cursor:pointer;

@@ -32,12 +32,6 @@ export default function Reporting() {
             <h1 className="mast-title">Reporting</h1>
             <div className="linked">From an export, or straight from the API</div>
           </div>
-          <dl className="mast-meta">
-            <div>
-              <dt>Form</dt>
-              <dd>LA-08</dd>
-            </div>
-          </dl>
         </header>
 
         <div className="modebar">

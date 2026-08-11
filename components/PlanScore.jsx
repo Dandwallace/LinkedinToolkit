@@ -410,7 +410,6 @@ export default function PlanScore() {
           if (b.objective === 'Brand awareness') p.campaignType = 'Always-on programme';
           if (b.assets?.includes('Webinar or event')) p.campaignType = 'Event or launch';
           if (b.campaignCount) p.campaigns = Math.min(20, Number(b.campaignCount));
-          if (b.audienceSize) p.audienceSize = Math.round(Number(b.audienceSize) / 5000) * 5000;
           if (b.targetLeads) p.targetLeads = Math.round(Number(b.targetLeads) / 5) * 5;
           if (b.dealSize) p.dealSize = Math.round(Number(b.dealSize) / 1000) * 1000;
           if (b.landingPages === 'Yes') p.capture = 'Landing page';

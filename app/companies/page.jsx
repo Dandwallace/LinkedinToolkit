@@ -106,7 +106,6 @@ export default function CompaniesPage() {
           <h1 className="mast-title">Company engagement</h1>
           <div className="linked">Which companies actually saw and clicked the ads</div>
         </div>
-        <dl className="mast-meta"><dt>Form</dt><dd>LA-14</dd></dl>
       </header>
 
       {apiError && (
@@ -276,6 +275,7 @@ const CSS = `
 
 .co-empty{max-width:1060px;margin:0 auto;background:var(--white);border:1px solid var(--ink);
   border-top:none;padding:22px;font-size:12.5px;line-height:1.6;color:var(--ink-2);}
+.masthead{max-width:1060px;}
 .co-body{max-width:1060px;margin:0 auto;background:var(--white);border:1px solid var(--ink);
   border-top:none;}
 .co-block{padding:14px 22px 18px;border-bottom:1px solid var(--rule);}

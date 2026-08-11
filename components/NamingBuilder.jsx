@@ -9,12 +9,13 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 const TOKENS = [
   { key: 'client', label: 'Client', from: 'value' },
   { key: 'market', label: 'Market', from: 'value' },
-  { key: 'stage', label: 'Stage', from: 'campaign' },
   { key: 'objective', label: 'Objective', from: 'campaign' },
   { key: 'audience', label: 'Audience', from: 'campaign' },
   { key: 'format', label: 'Format', from: 'campaign' },
   { key: 'variant', label: 'Variant', from: 'campaign' },
-  { key: 'period', label: 'Period', from: 'value' },
+  /* Rendered from the date range and never cleaned, so the slashes survive
+   * into the name. Its shape differs per level, set in periodFor below. */
+  { key: 'period', label: 'Period', from: 'period', raw: true },
 ];
 
 /* ------------------------------------------------------------------ *
@@ -31,27 +32,50 @@ const LEVELS = [
     key: 'campaign',
     label: 'Campaign',
     aka: 'the group. LinkedIn used to call this the Campaign Group',
-    defaults: { client: true, market: true, stage: true, objective: true, audience: false, format: false, variant: false, period: true },
+    defaults: { client: true, market: true, objective: true, audience: false, format: false, variant: false, period: true },
     note: 'One per objective. Everything below inherits its budget and schedule.',
   },
   {
     key: 'adset',
     label: 'Campaign Ad Set',
     aka: 'what LinkedIn used to call the Campaign, and what actually spends',
-    defaults: { client: false, market: true, stage: true, objective: false, audience: true, format: true, variant: false, period: false },
+    defaults: { client: false, market: true, objective: false, audience: true, format: true, variant: false, period: true },
     note: 'One per audience. This is the rung you will filter reporting by.',
   },
   {
     key: 'ad',
     label: 'Ads',
     aka: 'the individual creatives inside an ad set',
-    defaults: { client: false, market: false, stage: false, objective: false, audience: false, format: true, variant: true, period: false },
+    defaults: { client: false, market: false, objective: false, audience: false, format: true, variant: true, period: false },
     note: 'One per creative. Keep it short, it sits inside an already long path.',
   },
 ];
 
-const STAGES = ['Awareness', 'Consideration', 'Conversion'];
 const OBJECTIVES = ['Brand', 'Traffic', 'Engagement', 'VideoViews', 'LeadGen', 'Conversions'];
+
+/* Maps the wording the intake form uses onto the short token used in names. */
+const OBJECTIVE_FROM_BRIEF = {
+  'Brand awareness': 'Brand',
+  'Website traffic': 'Traffic',
+  Engagement: 'Engagement',
+  'Video views': 'VideoViews',
+  'Lead generation': 'LeadGen',
+  'Website conversions': 'Conversions',
+};
+
+const FORMAT_FROM_BRIEF = {
+  'Single image': 'SingleImage',
+  Carousel: 'Carousel',
+  Video: 'Video',
+  Document: 'Document',
+  'Thought leader': 'ThoughtLeader',
+  'Follower ad': 'FollowerAd',
+  Spotlight: 'Spotlight',
+  'Text ad': 'TextAd',
+  'Message ad': 'Message',
+  'Conversation ad': 'Conversation',
+  'Event ad': 'Event',
+};
 const AUDIENCES = [
   'ICP-Cold',
   'ICP-Warm',
@@ -64,6 +88,7 @@ const AUDIENCES = [
 ];
 const FORMATS = [
   'SingleImage',
+  'FollowerAd',
   'Carousel',
   'Video',
   'Document',
@@ -81,9 +106,9 @@ let uid = 0;
 const nextId = () => `r${++uid}`;
 
 const STARTER = [
-  { stage: 'Awareness', objective: 'Brand', audience: 'ICP-Cold', format: 'ThoughtLeader', variant: 'v1' },
-  { stage: 'Consideration', objective: 'Engagement', audience: 'Retarget-Video', format: 'Document', variant: 'v1' },
-  { stage: 'Conversion', objective: 'LeadGen', audience: 'Retarget-Site', format: 'SingleImage', variant: 'v1' },
+  { objective: 'Brand', audience: 'ICP-Cold', format: 'ThoughtLeader', variant: 'v1' },
+  { objective: 'Engagement', audience: 'Retarget-Video', format: 'Document', variant: 'v1' },
+  { objective: 'LeadGen', audience: 'Retarget-Site', format: 'SingleImage', variant: 'v1' },
 ];
 
 /* ------------------------------------------------------------------ *
@@ -109,10 +134,30 @@ function applyCase(s, mode) {
     .join('');
 }
 
-function buildName(tokens, sep, mode, values, row) {
+/**
+ * The period token, shaped for the level it sits on.
+ *
+ * A campaign spans the whole flight, so month and year is the useful
+ * granularity. An ad set is often a burst inside that flight, where the day
+ * matters and the year is already implied by the campaign above it.
+ */
+export function periodFor(level, dates) {
+  const { start, end } = dates || {};
+  if (!start || !end) return '';
+  const [sy, sm, sd] = start.split('-');
+  const [ey, em, ed] = end.split('-');
+  if (level === 'campaign') return `${sm}/${sy}-${em}/${ey}`;
+  return `${sd}/${sm}-${ed}/${em}`;
+}
+
+function buildName(tokens, sep, mode, values, row, level, dates) {
   const parts = TOKENS.filter((t) => tokens[t.key])
-    .map((t) => (t.from === 'value' ? values[t.key] : row[t.key]))
-    .map(clean)
+    .map((t) => {
+      if (t.from === 'period') return periodFor(level, dates);
+      return t.from === 'value' ? values[t.key] : row[t.key];
+    })
+    /* The period keeps its slashes; everything else is scrubbed. */
+    .map((v, i) => (TOKENS.filter((t) => tokens[t.key])[i]?.raw ? String(v || '') : clean(v)))
     .filter(Boolean);
   return applyCase(parts.join(sep), mode);
 }
@@ -174,27 +219,61 @@ export default function NamingBuilder() {
   const [activeLevel, setActiveLevel] = useState('campaign');
   const [sepName, setSepName] = useState('Underscore');
   const [caseMode, setCaseMode] = useState('lower');
-  const [values, setValues] = useState({ client: '', market: 'UK', period: 'Q3-2026' });
+  const [values, setValues] = useState({ client: '', market: 'EMEA' });
+  const [dates, setDates] = useState({ start: '', end: '' });
   const [utm, setUtm] = useState({ source: 'linkedin', medium: 'paid-social', landing: '' });
   const [rows, setRows] = useState(() => STARTER.map((r) => ({ id: nextId(), ...r })));
   const [linked, setLinked] = useState(null);
   const [copied, setCopied] = useState('');
   const loaded = useRef(false);
 
+  /* Seeded from the intake brief: client, region, flight dates, the
+   * objective, and one row per creative format chosen there, so the naming
+   * sheet starts from the plan rather than from the starter rows. */
   useEffect(() => {
     (async () => {
       try {
         const r = await window.storage.get('brief:current');
-        if (r?.value) {
-          const b = JSON.parse(r.value);
-          const patch = {};
-          if (b.client) patch.client = b.client;
-          if (b.markets) patch.market = b.markets.split(',')[0].trim();
-          if (Object.keys(patch).length) {
-            setValues((p) => ({ ...p, ...patch }));
-            setLinked(b.client || 'saved brief');
-          }
-          if (b.website) setUtm((p) => ({ ...p, landing: b.website }));
+        if (!r?.value) return;
+        const b = JSON.parse(r.value);
+
+        const patch = {};
+        if (b.client) patch.client = b.client;
+        if (b.markets) patch.market = b.markets.split(',')[0].trim();
+        if (Object.keys(patch).length) {
+          setValues((p) => ({ ...p, ...patch }));
+          setLinked(b.client || 'saved brief');
+        }
+        if (b.website) setUtm((p) => ({ ...p, landing: b.website }));
+
+        if (b.startDate) {
+          const months = Number(b.months) || 0;
+          const start = new Date(`${b.startDate}T00:00:00Z`);
+          const end = new Date(start);
+          if (months) end.setUTCMonth(end.getUTCMonth() + months);
+          setDates({
+            start: b.startDate,
+            end: months ? end.toISOString().slice(0, 10) : '',
+          });
+        }
+
+        const objective = OBJECTIVE_FROM_BRIEF[b.objective];
+        const picks = (b.creatives || [])
+          .map((c) => FORMAT_FROM_BRIEF[c.format])
+          .filter(Boolean);
+
+        if (picks.length) {
+          setRows(
+            picks.map((format, i) => ({
+              id: nextId(),
+              objective: objective || 'Brand',
+              audience: i === 0 ? 'ICP-Cold' : 'Retarget-Site',
+              format,
+              variant: 'v1',
+            }))
+          );
+        } else if (objective) {
+          setRows((p) => p.map((r) => ({ ...r, objective })));
         }
       } catch {
         /* no brief yet */
@@ -209,7 +288,7 @@ export default function NamingBuilder() {
     () =>
       rows.map((r) => {
         const names = Object.fromEntries(
-          LEVELS.map((l) => [l.key, buildName(levelTokens[l.key], sep, caseMode, values, r)])
+          LEVELS.map((l) => [l.key, buildName(levelTokens[l.key], sep, caseMode, values, r, l.key, dates)])
         );
         /* The tagged URL keys off the ad set: that is the rung whose name
          * carries the audience, and the one reporting is grouped by. */
@@ -223,15 +302,19 @@ export default function NamingBuilder() {
         );
         return { ...r, names, slug, url: buildUrl(utm.landing, utm, slug, r) };
       }),
-    [rows, levelTokens, sep, caseMode, values, utm]
+    [rows, levelTokens, sep, caseMode, values, utm, dates]
   );
 
   const patterns = useMemo(
     () =>
       Object.fromEntries(
         LEVELS.map((l) => {
-          const parts = TOKENS.filter((t) => levelTokens[l.key][t.key]).map(
-            (t) => `{${t.label.toLowerCase()}}`
+          const parts = TOKENS.filter((t) => levelTokens[l.key][t.key]).map((t) =>
+            t.from === 'period'
+              ? l.key === 'campaign'
+                ? 'mm/yyyy-mm/yyyy'
+                : 'dd/mm-dd/mm'
+              : `{${t.label.toLowerCase()}}`
           );
           return [
             l.key,
@@ -241,6 +324,8 @@ export default function NamingBuilder() {
       ),
     [levelTokens, sep, caseMode]
   );
+
+  const periodSet = Boolean(dates.start && dates.end);
 
   const issues = useMemo(() => {
     const out = [];
@@ -279,6 +364,12 @@ export default function NamingBuilder() {
         text: 'Audience is off at ad set level. It is the field you will most often want to filter reporting by, so it is worth keeping.',
       });
     }
+    if (levelTokens.campaign.period && !periodSet) {
+      out.push({
+        level: 'action',
+        text: 'Period is switched on but no flight dates are set, so it drops out of every name. Set the start and end dates.',
+      });
+    }
     if (!levelTokens.campaign.period) {
       out.push({
         level: 'note',
@@ -301,14 +392,14 @@ export default function NamingBuilder() {
       });
     }
     return out;
-  }, [built, levelTokens, values, utm, caseMode]);
+  }, [built, levelTokens, values, utm, caseMode, periodSet]);
 
   const setRow = (id, patch) =>
     setRows((p) => p.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const addRow = () =>
     setRows((p) => [
       ...p,
-      { id: nextId(), stage: 'Conversion', objective: 'LeadGen', audience: 'ICP-Cold', format: 'SingleImage', variant: 'v1' },
+      { id: nextId(), objective: 'LeadGen', audience: 'ICP-Cold', format: 'SingleImage', variant: 'v1' },
     ]);
   const delRow = (id) => setRows((p) => p.filter((r) => r.id !== id));
 
@@ -341,10 +432,6 @@ export default function NamingBuilder() {
             </div>
           </div>
           <dl className="mast-meta">
-            <div>
-              <dt>Form</dt>
-              <dd>LA-04</dd>
-            </div>
             <div>
               <dt>Rows</dt>
               <dd>{built.length}</dd>
@@ -436,14 +523,27 @@ export default function NamingBuilder() {
                     onChange={(e) => setValues((p) => ({ ...p, market: e.target.value }))}
                   />
                 </Row>
-                <Row label="Period">
+                <Row label="Flight starts">
                   <input
                     className="inp"
-                    value={values.period}
-                    placeholder="Q3-2026"
-                    onChange={(e) => setValues((p) => ({ ...p, period: e.target.value }))}
+                    type="date"
+                    value={dates.start}
+                    onChange={(e) => setDates((p) => ({ ...p, start: e.target.value }))}
                   />
                 </Row>
+                <Row label="Flight ends">
+                  <input
+                    className="inp"
+                    type="date"
+                    value={dates.end}
+                    onChange={(e) => setDates((p) => ({ ...p, end: e.target.value }))}
+                  />
+                </Row>
+                <p className="fixed-note">
+                  Campaign names carry the period as {periodFor('campaign', dates) || 'mm/yyyy-mm/yyyy'},
+                  ad sets as {periodFor('adset', dates) || 'dd/mm-dd/mm'}. The year is implied at ad
+                  set level by the campaign above it.
+                </p>
               </div>
             </section>
 
@@ -500,7 +600,6 @@ export default function NamingBuilder() {
               {built.map((b) => (
                 <article className="card" key={b.id}>
                   <div className="card-picks">
-                    <Pick value={b.stage} onChange={(v) => setRow(b.id, { stage: v })} options={STAGES} />
                     <Pick
                       value={b.objective}
                       onChange={(v) => setRow(b.id, { objective: v })}
@@ -575,6 +674,7 @@ export default function NamingBuilder() {
 }
 
 const CSS = `
+.masthead{max-width:1240px;margin:0 auto;}
 .cols{max-width:1240px;margin:0 auto;display:grid;grid-template-columns:.76fr 1fr;align-items:start;}
 .row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px;
   padding:8px 0;border-bottom:1px dotted var(--rule);}

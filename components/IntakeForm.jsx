@@ -28,6 +28,11 @@ const SECTORS = {
   'Other / not listed': { cpc: 9.0, cpl: 100, ctr: 0.45 },
 };
 
+/* The accounts are sold by region, not by country, so the brief captures
+ * regions. Stored as a comma-joined string so everything downstream that
+ * already treats markets as text keeps working. */
+const MARKETS = ['EMEA', 'US', 'APAC'];
+
 const OBJECTIVES = [
   'Brand awareness',
   'Website traffic',
@@ -49,10 +54,6 @@ const EMPTY = {
   months: '',
   budget: '',
   campaignCount: '',
-  jobTitles: '',
-  jobFunctions: '',
-  seniority: '',
-  exclusions: '',
   audienceNotes: '',
   targetAccountList: '',
   runningNow: '',
@@ -183,7 +184,7 @@ function analyse(b) {
 
   /* ---------- Notes: worth knowing, not urgent ---------- */
 
-  if (b.markets && /\b(eu|europe|germany|france|spain|italy|netherlands|ireland|poland)\b/i.test(b.markets)) {
+  if (b.markets && /\b(emea|eu|europe|germany|france|spain|italy|netherlands|ireland|poland)\b/i.test(b.markets)) {
     add(
       'note',
       'EU targeting caveats',
@@ -280,6 +281,31 @@ function Choose({ value, onChange, options }) {
   return (
     <select className="inp sel" value={value} onChange={(e) => onChange(e.target.value)}>
       <option value="">Choose one</option>
+      {options.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** Native multi-select. Value is stored and emitted as a comma-joined string. */
+function Multi({ value, onChange, options }) {
+  const selected = String(value || '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+  return (
+    <select
+      className="inp sel multi"
+      multiple
+      size={options.length}
+      value={selected}
+      onChange={(e) =>
+        onChange([...e.target.selectedOptions].map((o) => o.value).join(', '))
+      }
+    >
       {options.map((o) => (
         <option key={o} value={o}>
           {o}
@@ -511,10 +537,6 @@ export default function IntakeForm() {
           </div>
           <dl className="mast-meta">
             <div>
-              <dt>Form</dt>
-              <dd>LA-01</dd>
-            </div>
-            <div>
               <dt>Date</dt>
               <dd>{new Date().toLocaleDateString('en-GB')}</dd>
             </div>
@@ -547,8 +569,8 @@ export default function IntakeForm() {
               <Field label="Website / landing page">
                 <Text value={b.website} onChange={set('website')} placeholder="example.com" />
               </Field>
-              <Field label="Markets">
-                <Text value={b.markets} onChange={set('markets')} placeholder="UK, Ireland, DACH" />
+              <Field label="Markets" hint="hold ctrl or cmd for more than one">
+                <Multi value={b.markets} onChange={set('markets')} options={MARKETS} />
               </Field>
             </Section>
 
@@ -586,40 +608,12 @@ export default function IntakeForm() {
             </Section>
 
             <Section letter="D" title="Audience">
-              <Field label="Job titles">
-                <Text
-                  value={b.jobTitles}
-                  onChange={set('jobTitles')}
-                  placeholder="Medical Affairs Lead, Market Access Manager"
-                />
-              </Field>
-              <Field label="Job functions">
-                <Text
-                  value={b.jobFunctions}
-                  onChange={set('jobFunctions')}
-                  placeholder="Healthcare Services, Research"
-                />
-              </Field>
-              <Field label="Seniority">
-                <Text
-                  value={b.seniority}
-                  onChange={set('seniority')}
-                  placeholder="Manager and above"
-                />
-              </Field>
-              <Field label="Exclusions">
-                <Text
-                  value={b.exclusions}
-                  onChange={set('exclusions')}
-                  placeholder="Competitors, own staff, existing customers"
-                />
-              </Field>
-              <Field label="How to split the audience" hint="their words, not a structure">
+              <Field label="Audience" hint="their words, not a structure">
                 <Area
                   value={b.audienceNotes}
                   onChange={set('audienceNotes')}
-                  rows={4}
-                  placeholder="What was actually said about who to reach and how to separate them. The exact split is rarely known at brief stage, so capture the intent rather than inventing segments."
+                  rows={6}
+                  placeholder="Who to reach, how to split them, who to exclude. At brief stage the exact split is rarely known, so capture what was actually said. Sizing and structure get worked out on the Plan score calculator."
                 />
               </Field>
               <Field label="Target account list available">
@@ -991,12 +985,18 @@ const CSS = `
 .inp:focus-visible { outline: 2px solid var(--carbon); outline-offset: 2px; }
 .area { resize: vertical; line-height: 1.5; min-height: 44px; }
 .sel { cursor: pointer; }
+.multi { height: auto; padding: 4px 6px; border: 1px solid var(--rule); background: var(--white); }
+.multi option { padding: 2px 4px; }
 /* ---- toggles ---- */
-.tog { display: inline-flex; border: 1px solid var(--rule); }
+/* The span is a grid item, so without this it stretched the full column and
+ * the border ran on past the buttons, which read as one huge box. Equal
+ * min-widths then keep Yes and No the same size as each other. */
+.tog { display: inline-flex; width: fit-content; justify-self: start; border: 1px solid var(--rule); }
 .tog-btn {
   font-family: 'Archivo Narrow', sans-serif; font-weight: 700;
   font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
-  padding: 5px 15px; background: transparent; color: var(--ink-2);
+  padding: 6px 0; min-width: 62px; text-align: center;
+  background: transparent; color: var(--ink-2);
   border: none; cursor: pointer; transition: background .12s, color .12s;
 }
 .tog-btn + .tog-btn { border-left: 1px solid var(--rule); }

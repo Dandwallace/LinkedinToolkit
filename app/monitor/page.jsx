@@ -93,7 +93,6 @@ export default function MonitorPage() {
           <h1 className="mast-title">Monitor</h1>
           <div className="linked">Budget pacing and frequency, the two that go wrong quietly</div>
         </div>
-        <dl className="mast-meta"><dt>Form</dt><dd>LA-13</dd></dl>
       </header>
 
       {apiError && (
@@ -256,6 +255,7 @@ const CSS = `
 .mo-field.narrow input,.mo-field.narrow select{min-width:0;width:104px;}
 .mo-field input:focus,.mo-field select:focus{border-color:var(--carbon);}
 
+.masthead{max-width:1000px;}
 .mo-body{max-width:1000px;margin:0 auto;background:var(--white);border:1px solid var(--ink);
   border-top:none;}
 .mo-block{padding:14px 22px 18px;border-bottom:1px solid var(--rule);}

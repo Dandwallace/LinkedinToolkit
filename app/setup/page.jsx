@@ -142,7 +142,11 @@ export default function SetupPage() {
 
   useEffect(() => { load(); }, []);
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  /* Read after mount rather than during render. Reading it inline made the
+   * server emit the placeholder and the client the real address, which is a
+   * hydration text mismatch (React #418). */
+  const [origin, setOrigin] = useState('');
+  useEffect(() => { setOrigin(window.location.origin); }, []);
 
   const resolved = STEPS.map((s) => {
     if (s.manual || !status) return { ...s, state: s.manual ? 'manual' : 'unknown' };
@@ -177,8 +181,8 @@ export default function SetupPage() {
       <div className="su-body">
         <p className="su-intro">
           Ordered by dependency, not effort. The first step has a multi-week approval, so it goes
-          first and everything else happens while it is pending. Twelve of the sixteen tools work
-          before any of this is done.
+          first and everything else happens while it is pending. The planning and delivery tools
+          all work before any of this is done.
         </p>
 
         {resolved.map((s, i) => (
@@ -236,6 +240,7 @@ export default function SetupPage() {
 const CSS = `
 .su-alert{max-width:900px;margin:0 auto;background:#F9EDE9;border-left:1px solid var(--ink);
   border-right:1px solid var(--ink);padding:11px 22px;font-size:13px;color:#7A3B22;}
+.masthead{max-width:900px;}
 .su-body{max-width:900px;margin:0 auto;background:var(--white);border:1px solid var(--ink);
   border-top:none;padding:0 0 4px 0;}
 .su-intro{margin:0;padding:14px 22px 16px;font-size:12.5px;line-height:1.6;color:var(--ink-2);

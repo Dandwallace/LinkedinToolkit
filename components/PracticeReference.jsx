@@ -545,10 +545,6 @@ export default function PracticeReference() {
           </div>
           <dl className="mast-meta">
             <div>
-              <dt>Ref</dt>
-              <dd>LA-REF</dd>
-            </div>
-            <div>
               <dt>Reviewed</dt>
               <dd>{new Date().toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}</dd>
             </div>

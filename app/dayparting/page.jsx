@@ -93,7 +93,6 @@ export default function DaypartingPage() {
             LinkedIn has no native delivery scheduling, so this runs every 15 minutes via cron
           </div>
         </div>
-        <dl className="mast-meta"><dt>Form</dt><dd>LA-11</dd></dl>
       </header>
 
       {apiError && (
@@ -277,6 +276,7 @@ const CSS = `
   border-right:1px solid var(--ink);border-bottom:1px solid var(--rule-2);padding:11px 22px;
   font-size:13px;color:#7A3B22;}
 .dp-alert-sub{font-size:12px;margin-top:4px;color:#8A5A3A;}
+.masthead{max-width:1180px;}
 .dp-body{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:1fr .68fr;
   align-items:start;border:1px solid var(--ink);background:var(--white);}
 .dp-side{background:var(--canary);border-left:1px solid var(--ink);align-self:stretch;}

@@ -113,7 +113,6 @@ export default function Home() {
           <Link key={t.route} href={`/${t.route}`} className="card">
             <div className="card-top">
               <ToolIcon route={t.route} />
-              <span className="card-form">{t.form}</span>
             </div>
             <div className="card-name">{t.name}</div>
             <div className="card-blurb">{t.blurb}</div>
@@ -127,7 +126,6 @@ export default function Home() {
           <Link key={t.route} href={`/${t.route}`} className="card api">
             <div className="card-top">
               <ToolIcon route={t.route} />
-              <span className="card-form">{t.form}</span>
             </div>
             <div className="card-name">{t.name}</div>
             <div className="card-blurb">{t.blurb}</div>
@@ -159,14 +157,15 @@ function ClientCard({ client, ready }) {
   return (
     <section className="cl">
       <header className="cl-head">
+        {/* The logo is the identifier. alt carries the name for anyone who
+          * cannot see it, so nothing is lost by dropping the text. */}
         <img
           className="cl-logo"
           src={`/logos/${client.id}.png`}
-          alt=""
-          width={96}
-          height={24}
+          alt={client.name}
+          width={128}
+          height={28}
         />
-        <h3 className="cl-name">{client.name}</h3>
       </header>
 
       {/* group level */}
