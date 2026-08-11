@@ -64,7 +64,7 @@ const CRITERIA = [
       const d = `£${daily.toFixed(0)}/day per campaign`;
       if (daily >= PRACTICAL_DAILY) return { s: 1 };
       if (daily >= THIN_DAILY) return { s: 0.6, why: `${d} sits just under the £${PRACTICAL_DAILY}–150 range where B2B campaigns gather enough clicks to optimise. Workable, but learning will be slow.` };
-      if (daily >= 25) return { s: 0.35, why: `${d} is well below the practical B2B floor. Splitting £10,000 across five campaigns leaves each at about £65/day — a documented failure pattern, and this is thinner still.` };
+      if (daily >= 25) return { s: 0.35, why: `${d} is well below the practical B2B floor. Splitting £10,000 across five campaigns leaves each at about £65/day, a documented failure pattern, and this is thinner still.` };
       if (daily >= MIN_DAILY) return { s: 0.15, why: `${d} clears LinkedIn's £${MIN_DAILY} technical minimum but will not generate enough daily clicks to leave the learning phase. Concentrate the spend.` };
       return { s: 0, why: `${d} sits below LinkedIn's £${MIN_DAILY} minimum. Delivery will be erratic or absent.` };
     },
@@ -81,7 +81,7 @@ const CRITERIA = [
 
       if (a.campaignType === 'Event or launch') {
         if (w >= 4 && w <= 12) return { s: 1 };
-        if (w > 12) return { s: 0.8, why: `${w} weeks is long for an event push. Fine if it is a phased build, but audiences fatigue on a fixed message — plan creative rotation.` };
+        if (w > 12) return { s: 0.8, why: `${w} weeks is long for an event push. Fine if it is a phased build, but audiences fatigue on a fixed message, so plan creative rotation.` };
         if (w >= 2) return { s: 0.7, why: `${tail} Workable for an event, though four to six weeks of lead time consistently performs better.` };
         return { s: 0.4, why: `${tail} You will be optimising on almost no data. Consider extending the lead time or accepting this as pure reach.` };
       }
@@ -89,13 +89,13 @@ const CRITERIA = [
       if (a.campaignType === 'Fixed-term campaign') {
         if (w >= 12) return { s: 1 };
         if (w >= 8) return { s: 0.85, why: `${tail} Enough to gather real signal and optimise. Longer would let more of the sales cycle land inside the window.` };
-        if (w >= 4) return { s: 0.6, why: `${tail} Enough to learn from, but a B2B sales cycle will run past the campaign end — measure on leads, not closed revenue.` };
+        if (w >= 4) return { s: 0.6, why: `${tail} Enough to learn from, but a B2B sales cycle will run past the campaign end, so measure on leads rather than closed revenue.` };
         return { s: 0.35, why: `${tail} Above LinkedIn's seven-day minimum, but too short to optimise meaningfully. Treat any result as directional.` };
       }
 
       /* Always-on programme */
       if (w >= 26) return { s: 1 };
-      if (w >= 12) return { s: 0.75, why: `${w} weeks is a campaign, not a programme. Always-on works because pools compound and learning is not repeatedly reset — under six months you lose most of that.` };
+      if (w >= 12) return { s: 0.75, why: `${w} weeks is a campaign, not a programme. Always-on works because pools compound and learning is not repeatedly reset. Under six months you lose most of that.` };
       if (w >= 4) return { s: 0.45, why: `${tail} If this is meant to be always-on, the budget is committed for too short a window to behave like it.` };
       return { s: 0.2, why: `${tail} Far too short for an always-on programme.` };
     },
@@ -108,7 +108,7 @@ const CRITERIA = [
       if (a.stages === 'Consideration + conversion') {
         return event
           ? { s: 0.9, why: 'Reasonable for a dated campaign. Watch that the pool you are retargeting was actually built recently enough to still be warm.' }
-          : { s: 0.7, why: 'No awareness layer means the retargeting pool never refills — conversion decays as the existing pool empties.' };
+          : { s: 0.7, why: 'No awareness layer means the retargeting pool never refills, so conversion decays as the existing pool empties.' };
       }
       return event
         ? { s: 0.6, why: 'Defensible against a hard date, but even two weeks of awareness ahead of the push lifts registration rates. Only skip it if a warm pool already exists.' }
@@ -123,7 +123,7 @@ const CRITERIA = [
       const workable = Math.max(1, Math.floor(daily / THIN_DAILY));
       if (a.campaigns <= ideal) return { s: 1 };
       if (a.campaigns <= workable) return { s: 0.6, why: `${a.campaigns} campaigns stretches this budget. £${a.budget.toLocaleString()}/month properly funds about ${ideal}. Fewer campaigns with more behind each outperform more campaigns running thin.` };
-      return { s: 0, why: `${a.campaigns} campaigns against a budget that properly funds ${ideal}. Two or three well-funded campaigns beat this every time — consolidate before launch, not after a month of flat results.` };
+      return { s: 0, why: `${a.campaigns} campaigns against a budget that properly funds ${ideal}. Two or three well-funded campaigns beat this every time. Consolidate before launch, not after a month of flat results.` };
     },
   },
   {
@@ -136,7 +136,7 @@ const CRITERIA = [
       const required = Math.ceil((needed * PRACTICAL_DAILY * DAYS) / 250) * 250;
       return {
         s: 0,
-        why: `A ${a.stages.toLowerCase()} needs at least ${needed} properly funded campaigns. This budget funds about ${affordable}. Either raise it to roughly £${required.toLocaleString()}/month or run fewer stages properly — a starved three-stage funnel performs worse than a well-fed single stage.`,
+        why: `A ${a.stages.toLowerCase()} needs at least ${needed} properly funded campaigns. This budget funds about ${affordable}. Either raise it to roughly £${required.toLocaleString()}/month or run fewer stages properly. A starved three-stage funnel performs worse than a well-fed single stage.`,
       };
     },
   },
@@ -144,7 +144,7 @@ const CRITERIA = [
     id: 'size', section: 'Audience', label: 'Audience size in a workable range', weight: 8,
     score: (a) => {
       if (a.audienceSize < 50000) return { s: 0.2, why: `${a.audienceSize.toLocaleString()} is below the 50k mark where delivery stalls and frequency spikes.` };
-      if (a.audienceSize > 500000) return { s: 0.4, why: `${a.audienceSize.toLocaleString()} is broad. Fine for awareness, but conversion spend will scatter — layer company size or seniority.` };
+      if (a.audienceSize > 500000) return { s: 0.4, why: `${a.audienceSize.toLocaleString()} is broad. Fine for awareness, but conversion spend will scatter, so layer company size or seniority.` };
       return { s: 1 };
     },
   },
@@ -251,7 +251,7 @@ const CRITERIA = [
       const hi = Math.round((a.budget * 0.25) / 50) * 50;
       return {
         s: 0,
-        why: `Media spend is not the whole cost. Plan 15–25% on top for creative production — roughly £${lo.toLocaleString()}–${hi.toLocaleString()}/month here. LinkedIn's small audiences exhaust creative fast, and campaigns stall when there is nothing left to rotate in.`,
+        why: `Media spend is not the whole cost. Plan 15–25% on top for creative production, roughly £${lo.toLocaleString()}–${hi.toLocaleString()}/month here. LinkedIn's small audiences exhaust creative fast, and campaigns stall when there is nothing left to rotate in.`,
       };
     },
   },
@@ -505,8 +505,8 @@ export default function PlanScore() {
 
   const copyReport = () => {
     const lines = [
-      `CAMPAIGN PLAN SCORE${linked ? ` — ${linked}` : ''}`,
-      `${rounded}% — ${grade.g}`,
+      `CAMPAIGN PLAN SCORE${linked ? `: ${linked}` : ''}`,
+      `${rounded}%, ${grade.g}`,
       '',
       'BIGGEST GAPS',
       ...deductions.slice(0, 6).map((d) => `  ${d.label} (−${d.lost.toFixed(0)})\n    ${d.why}`),
@@ -691,7 +691,7 @@ export default function PlanScore() {
               <button type="button" className="btn" onClick={copyReport}>Copy report</button>
               <button type="button" className="btn ghost" onClick={() => setA(BLANK)}>Reset</button>
               <span className="foot-note">
-                Bands move as you drag — budget adequacy depends on campaign count, and whether a
+                Bands move as you drag, because budget adequacy depends on campaign count, and whether a
                 target is realistic depends on budget.
               </span>
             </div>

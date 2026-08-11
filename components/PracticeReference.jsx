@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 
 /* ==================================================================== *
  * LINKEDIN ADS — BEST PRACTICE REFERENCE
@@ -32,7 +32,7 @@ const PRACTICES = [
     headline: '£75–150/day per campaign',
     practice: 'Fund each campaign to generate 5–10 clicks a day at your expected CPC.',
     why: "LinkedIn's £10/day technical minimum and the practical B2B minimum are an order of magnitude apart. Campaigns funded between the two run without ever accumulating enough data to optimise.",
-    source: { name: 'Stackmatix — LinkedIn Ads Budget Planning for B2B', url: 'https://www.stackmatix.com/blog/linkedin-ads-budget-planning-b2b', type: 'industry' },
+    source: { name: 'Stackmatix, LinkedIn Ads Budget Planning for B2B', url: 'https://www.stackmatix.com/blog/linkedin-ads-budget-planning-b2b', type: 'industry' },
     verified: '2026-07-28',
   },
   {
@@ -40,8 +40,8 @@ const PRACTICES = [
     category: 'Budget & structure',
     headline: '2–3 campaigns maximum',
     practice: 'Concentrate spend rather than dividing it evenly across many campaigns.',
-    why: 'Splitting £10,000/month across five campaigns leaves each at roughly £65/day — below the practical floor for most B2B audiences. Fewer campaigns with more behind each outperform many running thin, particularly during the learning phase.',
-    source: { name: 'Stackmatix — LinkedIn Ads Budget Planning for B2B', url: 'https://www.stackmatix.com/blog/linkedin-ads-budget-planning-b2b', type: 'industry' },
+    why: 'Splitting £10,000/month across five campaigns leaves each at roughly £65/day, below the practical floor for most B2B audiences. Fewer campaigns with more behind each outperform many running thin, particularly during the learning phase.',
+    source: { name: 'Stackmatix, LinkedIn Ads Budget Planning for B2B', url: 'https://www.stackmatix.com/blog/linkedin-ads-budget-planning-b2b', type: 'industry' },
     verified: '2026-07-28',
   },
   {
@@ -50,7 +50,7 @@ const PRACTICES = [
     headline: '15–25% on top for creative',
     practice: 'Budget creative production separately from media spend.',
     why: "LinkedIn's small audiences exhaust creative quickly. A £10,000/month media budget needs roughly £1,500–2,500/month of production support to keep performance from decaying.",
-    source: { name: 'Stackmatix — LinkedIn Ads Budget Planning for B2B', url: 'https://www.stackmatix.com/blog/linkedin-ads-budget-planning-b2b', type: 'industry' },
+    source: { name: 'Stackmatix, LinkedIn Ads Budget Planning for B2B', url: 'https://www.stackmatix.com/blog/linkedin-ads-budget-planning-b2b', type: 'industry' },
     verified: '2026-07-28',
   },
   {
@@ -59,7 +59,7 @@ const PRACTICES = [
     headline: '£10/day technical minimum',
     practice: "LinkedIn's own floor per campaign, but not a target.",
     why: 'Widely quoted and widely misread as a recommendation. It is the point below which campaigns will not run, not the point above which they work.',
-    source: { name: 'LinkedIn — Campaign and ad set budgets', url: 'https://www.linkedin.com/help/lms/answer/a422101', type: 'official' },
+    source: { name: 'LinkedIn, Campaign and ad set budgets', url: 'https://www.linkedin.com/help/lms/answer/a422101', type: 'official' },
     verified: '2026-07-28',
   },
   {
@@ -67,8 +67,8 @@ const PRACTICES = [
     category: 'Budget & structure',
     headline: 'One audience per campaign',
     practice: 'One objective per campaign group, one audience segment per campaign, two or more ads per campaign.',
-    why: 'When two audiences share a campaign you cannot tell which drove the conversion — only that the campaign averaged an acceptable cost. That is not optimisation, it is guessing.',
-    source: { name: 'Stackmatix — LinkedIn Ads Account Structure', url: 'https://www.stackmatix.com/blog/linkedin-ads-account-structure', type: 'industry' },
+    why: 'When two audiences share a campaign you cannot tell which drove the conversion, only that the campaign averaged an acceptable cost. That is not optimisation, it is guessing.',
+    source: { name: 'Stackmatix, LinkedIn Ads Account Structure', url: 'https://www.stackmatix.com/blog/linkedin-ads-account-structure', type: 'industry' },
     verified: '2026-07-28',
   },
   {
@@ -77,7 +77,7 @@ const PRACTICES = [
     headline: 'Campaign Groups → Campaigns',
     practice: 'LinkedIn began renaming Campaign Groups to "Campaigns" and Campaigns to "Ad Sets" in late 2025, aligning with Meta and Google.',
     why: 'Functionality is identical, but both conventions appear in documentation and in client conversations. Confirm which one someone means before agreeing a structure.',
-    source: { name: 'AgencyAccess — LinkedIn Ads Management Guide', url: 'https://www.agencyaccess.co/blog/linkedin-ads-management-the-complete-guide', type: 'industry' },
+    source: { name: 'AgencyAccess, LinkedIn Ads Management Guide', url: 'https://www.agencyaccess.co/blog/linkedin-ads-management-the-complete-guide', type: 'industry' },
     verified: '2026-07-28',
   },
 
@@ -88,7 +88,7 @@ const PRACTICES = [
     headline: '300 members minimum',
     practice: 'An audience cannot be targeted until it holds at least 300 matched members.',
     why: 'This is the hard gate on every retargeting pool. Until it clears, a planned conversion layer simply cannot run.',
-    source: { name: 'LinkedIn — Campaign setup best practices', url: 'https://www.linkedin.com/help/lms/answer/a422123/campaign-setup-best-practices', type: 'official' },
+    source: { name: 'LinkedIn, Campaign setup best practices', url: 'https://www.linkedin.com/help/lms/answer/a422123/campaign-setup-best-practices', type: 'official' },
     verified: '2026-07-28',
   },
   {
@@ -97,7 +97,7 @@ const PRACTICES = [
     headline: '50,000 suggested',
     practice: "LinkedIn's own recommended minimum audience size for driving campaign results.",
     why: 'Below this, delivery stalls and frequency climbs against the same small group. The 300 floor is what is permitted; 50,000 is what works.',
-    source: { name: 'LinkedIn — Campaign setup best practices', url: 'https://www.linkedin.com/help/lms/answer/a422123/campaign-setup-best-practices', type: 'official' },
+    source: { name: 'LinkedIn, Campaign setup best practices', url: 'https://www.linkedin.com/help/lms/answer/a422123/campaign-setup-best-practices', type: 'official' },
     verified: '2026-07-28',
   },
   {
@@ -106,7 +106,7 @@ const PRACTICES = [
     headline: 'At least 4 include attributes',
     practice: 'LinkedIn recommends adding four or more attributes to the INCLUDE section when building an audience from targeting facets.',
     why: 'Fewer attributes tends to produce audiences too small to deliver. Less well known than the size thresholds, and useful when an audience comes back unexpectedly narrow.',
-    source: { name: 'LinkedIn — Campaign setup best practices', url: 'https://www.linkedin.com/help/lms/answer/a422123/campaign-setup-best-practices', type: 'official' },
+    source: { name: 'LinkedIn, Campaign setup best practices', url: 'https://www.linkedin.com/help/lms/answer/a422123/campaign-setup-best-practices', type: 'official' },
     verified: '2026-07-28',
   },
   {
@@ -115,7 +115,7 @@ const PRACTICES = [
     headline: 'Company lists match 70–90%',
     practice: 'Company list uploads match far better than contact lists, which typically reach 30–60%.',
     why: 'Sets expectations before an upload. A company list returning well under 70% usually needs LinkedIn Page URLs adding alongside company names.',
-    source: { name: 'Industry consensus — multiple ABM practitioner sources', url: '', type: 'industry' },
+    source: { name: 'Industry consensus, multiple ABM practitioner sources', url: '', type: 'industry' },
     verified: '2026-07-28',
   },
   {
@@ -124,7 +124,7 @@ const PRACTICES = [
     headline: 'Permanent, not recent location',
     practice: 'Set location targeting to permanent location rather than recent location.',
     why: 'Recent location includes anyone who has passed through the area. For B2B you almost always want where someone actually works.',
-    source: { name: 'Industry consensus — practitioner guidance', url: '', type: 'industry' },
+    source: { name: 'Industry consensus, practitioner guidance', url: '', type: 'industry' },
     verified: '2026-07-28',
   },
 
@@ -135,7 +135,7 @@ const PRACTICES = [
     headline: 'Two or more ads per campaign',
     practice: 'Always run at least two creative variants inside a campaign.',
     why: "LinkedIn's delivery algorithm needs variance to find the better performer, and you need the split to make creative decisions from data rather than preference.",
-    source: { name: 'Stackmatix — LinkedIn Ads Account Structure', url: 'https://www.stackmatix.com/blog/linkedin-ads-account-structure', type: 'industry' },
+    source: { name: 'Stackmatix, LinkedIn Ads Account Structure', url: 'https://www.stackmatix.com/blog/linkedin-ads-account-structure', type: 'industry' },
     verified: '2026-07-28',
   },
   {
@@ -189,7 +189,7 @@ const PRACTICES = [
     headline: 'Thought Leader Ads',
     practice: "Sponsor a named member's organic post rather than posting from the company page.",
     why: 'The creative is the original post, so the message stays authentic and typically earns stronger engagement than page-first advertising.',
-    source: { name: 'Hootsuite — LinkedIn ads guide', url: 'https://blog.hootsuite.com/linkedin-ads-guide/', type: 'industry' },
+    source: { name: 'Hootsuite, LinkedIn ads guide', url: 'https://blog.hootsuite.com/linkedin-ads-guide/', type: 'industry' },
     verified: '2026-07-28',
   },
   {
@@ -197,8 +197,8 @@ const PRACTICES = [
     category: 'Creative & formats',
     headline: 'Event Ads: up to 31× viewership',
     practice: 'Promote a LinkedIn Event in-feed, before, during and after the event.',
-    why: "A large claimed multiplier from LinkedIn's own reporting — directionally useful, but it is a platform figure and worth treating as a ceiling rather than an expectation.",
-    source: { name: 'Hootsuite — LinkedIn ads guide', url: 'https://blog.hootsuite.com/linkedin-ads-guide/', type: 'vendor' },
+    why: "A large claimed multiplier from LinkedIn's own reporting. Directionally useful, but it is a platform figure and worth treating as a ceiling rather than an expectation.",
+    source: { name: 'Hootsuite, LinkedIn ads guide', url: 'https://blog.hootsuite.com/linkedin-ads-guide/', type: 'vendor' },
     verified: '2026-07-28',
   },
   {
@@ -206,8 +206,8 @@ const PRACTICES = [
     category: 'Creative & formats',
     headline: '3–4 form fields',
     practice: 'Keep Lead Gen Forms short. Twelve is the ceiling, not the target.',
-    why: 'Every field past the fourth costs completions. Native forms pre-fill from the profile, which is where their conversion advantage comes from — long forms give it back.',
-    source: { name: 'Industry consensus — practitioner guidance', url: '', type: 'industry' },
+    why: 'Every field past the fourth costs completions. Native forms pre-fill from the profile, which is where their conversion advantage comes from. Long forms give it back.',
+    source: { name: 'Industry consensus, practitioner guidance', url: '', type: 'industry' },
     verified: '2026-07-28',
   },
 
@@ -218,7 +218,7 @@ const PRACTICES = [
     headline: 'Insight Tag: 24–48 hours to verify',
     practice: 'Install site-wide and wait for Campaign Manager to show the domain as Verified before spending.',
     why: 'Nothing accrues before the tag is live, and it cannot be backdated. Every day without it is retargeting pool permanently lost.',
-    source: { name: 'Industry consensus — practitioner guidance', url: '', type: 'industry' },
+    source: { name: 'Industry consensus, practitioner guidance', url: '', type: 'industry' },
     verified: '2026-07-28',
   },
   {
@@ -227,16 +227,16 @@ const PRACTICES = [
     headline: 'Conversions must be attached',
     practice: 'A conversion action only records once linked to a specific campaign.',
     why: 'A defined-but-unattached conversion counts nothing, silently, and looks identical to a campaign that simply is not converting.',
-    source: { name: 'Industry consensus — practitioner guidance', url: '', type: 'industry' },
+    source: { name: 'Industry consensus, practitioner guidance', url: '', type: 'industry' },
     verified: '2026-07-28',
   },
   {
     id: 'no-macros',
     category: 'Measurement & tracking',
     headline: 'No URL macros',
-    practice: 'LinkedIn has no equivalent of Google\'s {campaignid} — every tracked URL is written out in full, per ad.',
+    practice: 'LinkedIn has no equivalent of Google\'s {campaignid}, so every tracked URL is written out in full, per ad.',
     why: 'Makes hand-built UTMs the norm and typos routine. Generate them rather than typing them.',
-    source: { name: 'Industry consensus — practitioner guidance', url: '', type: 'industry' },
+    source: { name: 'Industry consensus, practitioner guidance', url: '', type: 'industry' },
     verified: '2026-07-28',
   },
   {
@@ -244,8 +244,8 @@ const PRACTICES = [
     category: 'Measurement & tracking',
     headline: 'Lowercase every UTM',
     practice: 'GA4 treats utm_source=LinkedIn and utm_source=linkedin as separate sources.',
-    why: 'Splits every report down the middle, and the damage is retrospective — you cannot merge them cleanly after the fact.',
-    source: { name: 'Industry consensus — analytics practice', url: '', type: 'industry' },
+    why: 'Splits every report down the middle, and the damage is retrospective. You cannot merge them cleanly after the fact.',
+    source: { name: 'Industry consensus, analytics practice', url: '', type: 'industry' },
     verified: '2026-07-28',
   },
   {
@@ -254,7 +254,7 @@ const PRACTICES = [
     headline: 'No native Looker Studio connector',
     practice: 'Unlike Google Ads or GA4, LinkedIn Ads has no first-party Looker Studio connection.',
     why: 'Reporting requires manual CSV export, a paid third-party connector, or your own API pull. Agencies commonly lose ten-plus hours a month to the manual route.',
-    source: { name: 'Industry consensus — reporting tool comparisons', url: '', type: 'industry' },
+    source: { name: 'Industry consensus, reporting tool comparisons', url: '', type: 'industry' },
     verified: '2026-07-28',
   },
 
@@ -265,7 +265,7 @@ const PRACTICES = [
     headline: 'Learning phase: 1–2 weeks',
     practice: 'A new campaign, or any significant edit, puts delivery into a learning phase lasting roughly 7–14 days.',
     why: 'Costs are higher and more variable during it. Every significant edit restarts the clock, so batch changes rather than tuning daily.',
-    source: { name: 'Stackmatix — How to Run LinkedIn Ads', url: 'https://www.stackmatix.com/blog/how-to-run-linkedin-ads', type: 'industry' },
+    source: { name: 'Stackmatix, How to Run LinkedIn Ads', url: 'https://www.stackmatix.com/blog/how-to-run-linkedin-ads', type: 'industry' },
     verified: '2026-07-28',
   },
   {
@@ -273,8 +273,8 @@ const PRACTICES = [
     category: 'Timing & duration',
     headline: 'Seven-day minimum schedule',
     practice: "LinkedIn's own recommended minimum campaign length to see results.",
-    why: "Useful counterweight to the assumption that short campaigns are inherently bad. A two-month campaign is entirely legitimate — judge duration against the objective, not a fixed bar.",
-    source: { name: 'LinkedIn — Campaign setup best practices', url: 'https://www.linkedin.com/help/lms/answer/a422123/campaign-setup-best-practices', type: 'official' },
+    why: "Useful counterweight to the assumption that short campaigns are inherently bad. A two-month campaign is entirely legitimate. Judge duration against the objective, not a fixed bar.",
+    source: { name: 'LinkedIn, Campaign setup best practices', url: 'https://www.linkedin.com/help/lms/answer/a422123/campaign-setup-best-practices', type: 'official' },
     verified: '2026-07-28',
   },
   {
@@ -283,7 +283,7 @@ const PRACTICES = [
     headline: '30–60 days for meaningful volume',
     practice: 'Lead volume and optimisation typically need one to two months to become readable.',
     why: 'The gap between "the campaign is running" and "the numbers mean something" is where most client expectation problems live. Set it at kickoff.',
-    source: { name: 'Stackmatix — How to Run LinkedIn Ads', url: 'https://www.stackmatix.com/blog/how-to-run-linkedin-ads', type: 'industry' },
+    source: { name: 'Stackmatix, How to Run LinkedIn Ads', url: 'https://www.stackmatix.com/blog/how-to-run-linkedin-ads', type: 'industry' },
     verified: '2026-07-28',
   },
   {
@@ -301,7 +301,7 @@ const PRACTICES = [
     headline: 'Run 30 days after an event',
     practice: 'Gate the replay behind a Lead Gen Form and run a sustained low-budget campaign for a month afterwards.',
     why: 'Reported to produce 20–30% additional registrations beyond the live audience. The cheapest incremental volume in an event programme, and routinely skipped.',
-    source: { name: 'Converve — Promoting Events on LinkedIn', url: 'https://www.converve.com/event-networking-blog/how-to-promote-events-on-linkedin-2026-guide', type: 'industry' },
+    source: { name: 'Converve, Promoting Events on LinkedIn', url: 'https://www.converve.com/event-networking-blog/how-to-promote-events-on-linkedin-2026-guide', type: 'industry' },
     verified: '2026-07-28',
   },
   {
@@ -322,7 +322,7 @@ const PRACTICES = [
     headline: 'CPC $5–8, CPM $30–65',
     practice: 'Typical LinkedIn cost ranges for B2B.',
     why: 'Higher than other platforms, and the justification is lead quality rather than volume. Useful for sanity-checking a forecast before presenting it.',
-    source: { name: 'Stackmatix — How to Run LinkedIn Ads', url: 'https://www.stackmatix.com/blog/how-to-run-linkedin-ads', type: 'industry' },
+    source: { name: 'Stackmatix, How to Run LinkedIn Ads', url: 'https://www.stackmatix.com/blog/how-to-run-linkedin-ads', type: 'industry' },
     verified: '2026-07-28',
   },
   {
@@ -331,7 +331,7 @@ const PRACTICES = [
     headline: 'CPL $75–150',
     practice: 'Typical cost per lead for B2B lead generation on LinkedIn.',
     why: 'A target implying a CPL well below this is a budget problem, not an ambition. Check it before agreeing a number with a client.',
-    source: { name: 'Stackmatix — How to Run LinkedIn Ads', url: 'https://www.stackmatix.com/blog/how-to-run-linkedin-ads', type: 'industry' },
+    source: { name: 'Stackmatix, How to Run LinkedIn Ads', url: 'https://www.stackmatix.com/blog/how-to-run-linkedin-ads', type: 'industry' },
     verified: '2026-07-28',
   },
   {
@@ -340,7 +340,7 @@ const PRACTICES = [
     headline: '~50 conversions to optimise',
     practice: 'Delivery algorithms broadly need around fifty conversion events before optimisation stabilises.',
     why: 'A cross-platform rule of thumb rather than a LinkedIn-published figure. Useful for judging whether a campaign has had a fair run before you judge it.',
-    source: { name: 'Takeflyte — How Long Do Digital Ads Take to Work', url: 'https://www.takeflyte.com/blog/how-long-do-ads-take-to-work', type: 'industry' },
+    source: { name: 'Takeflyte, How Long Do Digital Ads Take to Work', url: 'https://www.takeflyte.com/blog/how-long-do-ads-take-to-work', type: 'industry' },
     verified: '2026-07-28',
   },
 
@@ -351,7 +351,7 @@ const PRACTICES = [
     headline: 'Audience Expansion is ON by default',
     practice: 'Switch it off unless you have a specific reason not to.',
     why: 'It quietly widens targeting beyond everything you specified, and is the most common cause of unexplained irrelevant reach.',
-    source: { name: 'Industry consensus — practitioner guidance', url: '', type: 'industry' },
+    source: { name: 'Industry consensus, practitioner guidance', url: '', type: 'industry' },
     verified: '2026-07-28',
   },
   {
@@ -360,7 +360,7 @@ const PRACTICES = [
     headline: 'Audience Network is ON by default',
     practice: 'Decide deliberately rather than inheriting the default.',
     why: 'Useful for reach, weaker for lead quality. The problem is not the setting, it is that nobody chose it.',
-    source: { name: 'Industry consensus — practitioner guidance', url: '', type: 'industry' },
+    source: { name: 'Industry consensus, practitioner guidance', url: '', type: 'industry' },
     verified: '2026-07-28',
   },
   {
@@ -369,7 +369,7 @@ const PRACTICES = [
     headline: 'Paused ≠ finished',
     practice: 'Paused campaigns are considered active until their designated end time.',
     why: 'Status alone will not tell you whether a campaign is done. Track intent separately, especially if anything automates pausing.',
-    source: { name: 'Microsoft Learn — Create and Manage LinkedIn Campaigns', url: 'https://learn.microsoft.com/en-us/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaigns', type: 'official' },
+    source: { name: 'Microsoft Learn, Create and Manage LinkedIn Campaigns', url: 'https://learn.microsoft.com/en-us/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaigns', type: 'official' },
     verified: '2026-07-28',
   },
   {
@@ -378,7 +378,7 @@ const PRACTICES = [
     headline: 'No native dayparting',
     practice: 'Campaign Manager offers a start and end date and nothing more granular.',
     why: 'Delivery-hour control has to be manual or handled by a third-party tool. B2B accounts commonly lose 20–35% of spend to weekends and overnight.',
-    source: { name: 'LinkedIn — Campaign and ad set schedules', url: 'https://www.linkedin.com/help/lms/answer/a427004', type: 'official' },
+    source: { name: 'LinkedIn, Campaign and ad set schedules', url: 'https://www.linkedin.com/help/lms/answer/a427004', type: 'official' },
     verified: '2026-07-28',
   },
   {
@@ -387,7 +387,7 @@ const PRACTICES = [
     headline: '15 active creatives per campaign',
     practice: 'A campaign holds a maximum of 15 active and 85 inactive creatives.',
     why: 'Rarely binding, but worth knowing before planning a large rotation programme.',
-    source: { name: 'Microsoft Learn — Create and Manage LinkedIn Campaigns', url: 'https://learn.microsoft.com/en-us/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaigns', type: 'official' },
+    source: { name: 'Microsoft Learn, Create and Manage LinkedIn Campaigns', url: 'https://learn.microsoft.com/en-us/linkedin/marketing/integrations/ads/account-structure/create-and-manage-campaigns', type: 'official' },
     verified: '2026-07-28',
   },
   {
@@ -396,7 +396,7 @@ const PRACTICES = [
     headline: 'EU Sponsored Messaging needs opt-in',
     practice: 'EU members must have opted in before they can receive Message or Conversation Ads.',
     why: 'Reachable volume is far smaller than the raw audience suggests. Plan around it rather than discovering it in delivery.',
-    source: { name: 'Industry consensus — ePrivacy Directive guidance', url: '', type: 'industry' },
+    source: { name: 'Industry consensus, ePrivacy Directive guidance', url: '', type: 'industry' },
     verified: '2026-07-28',
   },
   {
@@ -405,7 +405,7 @@ const PRACTICES = [
     headline: 'A Company Page is required',
     practice: 'Campaign Manager cannot run ads without an associated LinkedIn Page.',
     why: 'Blocks a launch entirely if discovered late. Creating one takes minutes, but needs a personal profile in a real name.',
-    source: { name: 'Stackmatix — How to Run LinkedIn Ads', url: 'https://www.stackmatix.com/blog/how-to-run-linkedin-ads', type: 'industry' },
+    source: { name: 'Stackmatix, How to Run LinkedIn Ads', url: 'https://www.stackmatix.com/blog/how-to-run-linkedin-ads', type: 'industry' },
     verified: '2026-07-28',
   },
 ];
@@ -441,20 +441,57 @@ function staleness(iso) {
 
 /* ------------------------------------------------------------------ */
 
+/* Re-checks are stored per entry and override the hardcoded date. The
+ * hardcoded one stays in the source as the floor: clearing browser storage
+ * returns the page to what was last verified in the repository rather than
+ * to nothing. */
+const CHECKED_KEY = 'reference:checked';
+
 export default function PracticeReference() {
   const [query, setQuery] = useState('');
   const [cats, setCats] = useState([]);
   const [types, setTypes] = useState([]);
   const [staleOnly, setStaleOnly] = useState(false);
+  const [review, setReview] = useState(false);
+  const [checked, setChecked] = useState({});
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await window.storage.get(CHECKED_KEY);
+        setChecked(JSON.parse(r.value) || {});
+      } catch {
+        /* nothing re-checked in this browser yet */
+      }
+    })();
+  }, []);
+
+  const markChecked = async (id) => {
+    const next = { ...checked, [id]: new Date().toISOString().slice(0, 10) };
+    setChecked(next);
+    try {
+      await window.storage.set(CHECKED_KEY, JSON.stringify(next));
+    } catch {
+      /* storage full; the tick still shows for this session */
+    }
+  };
 
   const enriched = useMemo(
-    () => PRACTICES.map((p) => ({ ...p, stale: staleness(p.verified) })),
-    []
+    () =>
+      PRACTICES.map((p) => {
+        /* Whichever is later wins, so editing the source file forward still
+         * takes effect even if this browser checked it earlier. */
+        const local = checked[p.id];
+        const verified = local && local > p.verified ? local : p.verified;
+        return { ...p, verified, locallyChecked: Boolean(local), stale: staleness(verified) };
+      }),
+    [checked]
   );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return enriched.filter((p) => {
+      if (review && p.stale.level === 'ok') return false;
       if (cats.length && !cats.includes(p.category)) return false;
       if (types.length && !types.includes(p.source.type)) return false;
       if (staleOnly && p.stale.level === 'ok') return false;
@@ -464,7 +501,7 @@ export default function PracticeReference() {
         .toLowerCase()
         .includes(q);
     });
-  }, [enriched, query, cats, types, staleOnly]);
+  }, [enriched, query, cats, types, staleOnly, review]);
 
   const counts = useMemo(() => {
     const byType = { official: 0, industry: 0, vendor: 0 };
@@ -487,7 +524,7 @@ export default function PracticeReference() {
   const copyAll = () => {
     const lines = grouped.flatMap((g) => [
       g.category.toUpperCase(),
-      ...g.items.map((p) => `  ${p.headline} — ${p.practice}\n    ${p.why}\n    Source: ${p.source.name}${p.source.url ? ` (${p.source.url})` : ''} · verified ${p.verified}`),
+      ...g.items.map((p) => `  ${p.headline}. ${p.practice}\n    ${p.why}\n    Source: ${p.source.name}${p.source.url ? ` (${p.source.url})` : ''} · verified ${p.verified}`),
       '',
     ]);
     navigator.clipboard?.writeText(lines.join('\n'));
@@ -539,9 +576,13 @@ export default function PracticeReference() {
             ))}
             <button type="button" className={staleOnly ? 'f warn on' : 'f warn'}
               onClick={() => setStaleOnly((v) => !v)}>Due a re-check</button>
-            {(cats.length || types.length || staleOnly || query) && (
+            <button type="button" className={review ? 'f rev on' : 'f rev'}
+              onClick={() => setReview((v) => !v)}>
+              {review ? 'Leave review mode' : `Review mode (${counts.needsReview})`}
+            </button>
+            {(cats.length || types.length || staleOnly || query || review) && (
               <button type="button" className="f clear"
-                onClick={() => { setCats([]); setTypes([]); setStaleOnly(false); setQuery(''); }}>
+                onClick={() => { setCats([]); setTypes([]); setStaleOnly(false); setQuery(''); setReview(false); }}>
                 Clear
               </button>
             )}
@@ -549,7 +590,18 @@ export default function PracticeReference() {
         </div>
 
         <div className="body">
-          {!filtered.length && (
+          {review && (
+            <div className="revbar">
+              <strong>Review mode.</strong> Showing the {counts.needsReview} entr
+              {counts.needsReview === 1 ? 'y' : 'ies'} last verified more than six months ago.
+              Open the source, confirm it still says this, then mark it checked. The date is
+              stored in this browser and overrides the one in the source file.
+            </div>
+          )}
+          {review && !filtered.length && (
+            <p className="empty">Nothing is older than six months. Everything here is current.</p>
+          )}
+          {!review && !filtered.length && (
             <p className="empty">Nothing matches those filters.</p>
           )}
 
@@ -573,10 +625,20 @@ export default function PracticeReference() {
                       {p.source.url ? (
                         <a href={p.source.url} target="_blank" rel="noopener noreferrer">{p.source.name}</a>
                       ) : (
-                        <span className="nosrc">{p.source.name} — no single canonical URL</span>
+                        <span className="nosrc">{p.source.name}, no single canonical URL</span>
+                      )}
+                      {(review || p.stale.level !== 'ok') && (
+                        <button
+                          type="button"
+                          className="checkbtn"
+                          onClick={() => markChecked(p.id)}
+                        >
+                          I have checked this
+                        </button>
                       )}
                       <span className={`ver ${p.stale.level}`}>
                         {p.stale.level === 'ok' ? 'Verified' : p.stale.label} {p.verified}
+                        {p.locallyChecked && <em className="ver-local">checked here</em>}
                       </span>
                     </div>
                   </div>
@@ -590,8 +652,10 @@ export default function PracticeReference() {
           <button type="button" className="btn" onClick={copyAll}>Copy visible entries</button>
           <p className="foot-note">
             Entries flag amber past {REVIEW_AMBER_MONTHS} months and red past {REVIEW_RED_MONTHS}.
-            To update, edit the PRACTICES array at the top of this file and bump the verified date —
-            a reference that never shows its age is more dangerous than one with gaps.
+            Use Review mode to work through anything past six months: check the source, then mark
+            it checked, which stores today's date in this browser. To change an entry permanently,
+            edit the PRACTICES array at the top of this file and bump the verified date. A
+            reference that never shows its age is more dangerous than one with gaps.
             Anything marked <strong>Industry practice</strong> without a URL is widely-held
             practitioner consensus rather than published documentation: sound to work from, worth
             attributing carefully before quoting to a client.
@@ -603,6 +667,17 @@ export default function PracticeReference() {
 }
 
 const CSS = `
+.f.rev{border-color:var(--carbon);color:var(--carbon);}
+.f.rev.on{background:var(--carbon);color:var(--white);border-color:var(--carbon);}
+.revbar{padding:11px 16px;background:#F5F4FA;border-bottom:1px solid var(--rule);
+  font-size:12.5px;line-height:1.6;color:#3B3E62;}
+.checkbtn{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:9px;
+  letter-spacing:.13em;text-transform:uppercase;background:none;border:1px solid var(--carbon);
+  color:var(--carbon);padding:3px 8px;cursor:pointer;margin-right:8px;}
+.checkbtn:hover{background:var(--carbon);color:var(--white);}
+.checkbtn:focus-visible{outline:2px solid var(--carbon);outline-offset:2px;}
+.ver-local{font-style:normal;display:block;font-size:9px;letter-spacing:.1em;
+  text-transform:uppercase;opacity:.75;}
 .sheet{
   --white:#FCFCFA;--canary:#FAF3D2;--ink:#1B1D19;--ink-2:#5C5F57;
   --carbon:#3A3F7A;--rule:#D6D4C8;--rule-2:#DCCF8E;--stamp:#A8342A;--ok:#2F6B4F;--amber:#B07A1E;

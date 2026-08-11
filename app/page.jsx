@@ -3,20 +3,41 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { TOOLS, API_TOOLS } from '@/lib/tools';
-import { CLIENTS, loadAllClients, flaggedAcrossClients } from '@/lib/client-store';
+import {
+  CLIENTS,
+  STATES,
+  loadAllClients,
+  flaggedAcrossClients,
+  activeByGroup,
+} from '@/lib/client-store';
 import ToolIcon from '@/components/ToolIcon';
 
 /**
  * Dashboard.
  *
- * The client health blocks read from whatever has been uploaded on the CSV
- * analysis page and filed against a client, so this is empty on a fresh
- * browser. That is deliberate — an empty state that says where the data
+ * The client health blocks read from whatever has been uploaded on the
+ * reporting page and filed against a client, so this is empty on a fresh
+ * browser. That is deliberate: an empty state that says where the data
  * comes from beats a demo one that looks like real numbers.
  */
+
+const STATE_LABEL = {
+  healthy: 'Healthy',
+  flagged: 'Flagged',
+  paused: 'Paused',
+  building: 'Building',
+  complete: 'Complete',
+};
+
+const emptyCounts = () => ({
+  ...Object.fromEntries(STATES.map((s) => [s, 0])),
+  total: 0,
+  pct: Object.fromEntries(STATES.map((s) => [s, 0])),
+});
+
 export default function Home() {
   const [clients, setClients] = useState(() =>
-    CLIENTS.map((c) => ({ ...c, data: null, counts: { healthy: 0, flagged: 0, paused: 0, total: 0 } }))
+    CLIENTS.map((c) => ({ ...c, data: null, counts: emptyCounts() }))
   );
   const [flagged, setFlagged] = useState([]);
   const [ready, setReady] = useState(false);
@@ -53,8 +74,8 @@ export default function Home() {
       {ready && !anyData && (
         <p className="attn-empty">
           Nothing uploaded yet. Export a campaign performance report from Campaign Manager,
-          drop it into <Link href="/performance">CSV analysis</Link>, and save it against a
-          client — the flags appear here.
+          drop it into <Link href="/reporting">Reporting</Link>, and save it against a client.
+          The flags appear here.
         </p>
       )}
       {ready && anyData && flagged.length === 0 && (
@@ -70,7 +91,7 @@ export default function Home() {
               <div className="attn-head">
                 <span className="attn-client">{c.client}</span>
                 <span className="attn-name">{c.name}</span>
-                <span className="attn-spend">£{Math.round(c.spend).toLocaleString('en-GB')}</span>
+                <span className="attn-spend">${Math.round(c.spend).toLocaleString('en-GB')}</span>
               </div>
               <ul className="attn-flags">
                 {c.flags.map((f) => (
@@ -115,10 +136,6 @@ export default function Home() {
       </div>
 
       <div className="notice">
-        <strong>Everything on the top row works today.</strong> Data lives in this browser
-        only — nothing is sent anywhere.
-        <br />
-        <br />
         The connected tools need a LinkedIn developer app and the Advertising API product
         approved. Once you have credentials, visit <code>/api/linkedin/connect</code> once
         to obtain a refresh token. Until then those pages will tell you what is missing
@@ -131,50 +148,73 @@ export default function Home() {
 /* ------------------------------------------------------------------ */
 
 function ClientCard({ client, ready }) {
+  const [open, setOpen] = useState(false);
   const { counts, data } = client;
   const has = counts.total > 0;
+  const labels = data?.labels || { group: 'Campaign', unit: 'Ad Set' };
+  const groupCounts = data?.groupCounts;
+  const groups = activeByGroup(data);
+  const activeCount = groups.reduce((n, g) => n + g.campaigns.length, 0);
 
   return (
     <section className="cl">
       <header className="cl-head">
+        <img
+          className="cl-logo"
+          src={`/logos/${client.id}.png`}
+          alt=""
+          width={96}
+          height={24}
+        />
         <h3 className="cl-name">{client.name}</h3>
-        <span className="cl-total">
-          {has ? `${counts.total} campaign${counts.total === 1 ? '' : 's'}` : '—'}
-        </span>
       </header>
 
-      <div className="cl-bar" role="img" aria-label={barLabel(counts)}>
-        {has ? (
-          <>
-            {counts.healthy > 0 && (
-              <span className="seg healthy" style={{ width: `${counts.pct.healthy}%` }} />
-            )}
-            {counts.flagged > 0 && (
-              <span className="seg flagged" style={{ width: `${counts.pct.flagged}%` }} />
-            )}
-            {counts.paused > 0 && (
-              <span className="seg paused" style={{ width: `${counts.pct.paused}%` }} />
-            )}
-          </>
-        ) : (
-          <span className="seg empty" />
-        )}
-      </div>
+      {/* group level */}
+      {groupCounts?.total > 0 && (
+        <Level label={labels.group} counts={groupCounts} />
+      )}
 
-      <dl className="cl-counts">
-        <div className="cl-count healthy">
-          <dt>Healthy</dt>
-          <dd>{has ? counts.healthy : '—'}</dd>
+      {/* unit level */}
+      <Level label={has ? labels.unit : 'Campaigns'} counts={counts} />
+
+      {activeCount > 0 && (
+        <div className="cl-active">
+          <button
+            type="button"
+            className="cl-toggle"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+          >
+            {open ? '−' : '+'} {activeCount} active {activeCount === 1 ? 'campaign' : 'campaigns'}
+          </button>
+          {open && (
+            <div className="cl-groups">
+              {groups.map((g) => (
+                <div className="cl-grp" key={g.group}>
+                  <div className="cl-grp-head">
+                    <span className="cl-grp-name">{g.group}</span>
+                    <span className="cl-grp-spend">
+                      ${Math.round(g.spend).toLocaleString('en-GB')}
+                    </span>
+                  </div>
+                  <ul className="cl-list">
+                    {g.campaigns.map((c) => (
+                      <li className="cl-item" key={c.campaignId || c.name}>
+                        <span className={`dot ${c.state}`} aria-hidden="true" />
+                        <span className="cl-item-name">{c.name}</span>
+                        <span className="cl-item-state">{STATE_LABEL[c.state]}</span>
+                        <span className="cl-item-spend">
+                          ${Math.round(c.spend).toLocaleString('en-GB')}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-        <div className="cl-count flagged">
-          <dt>Flagged</dt>
-          <dd>{has ? counts.flagged : '—'}</dd>
-        </div>
-        <div className="cl-count paused">
-          <dt>Paused</dt>
-          <dd>{has ? counts.paused : '—'}</dd>
-        </div>
-      </dl>
+      )}
 
       <footer className="cl-foot">
         {data ? (
@@ -186,7 +226,7 @@ function ClientCard({ client, ready }) {
             uploaded {new Date(data.savedAt).toLocaleDateString('en-GB')}
           </>
         ) : ready ? (
-          <Link href="/performance">Upload an export</Link>
+          <Link href="/reporting">Upload an export</Link>
         ) : (
           'Loading…'
         )}
@@ -195,7 +235,41 @@ function ClientCard({ client, ready }) {
   );
 }
 
+/** One rung of the hierarchy: a proportion bar and the five counts. */
+function Level({ label, counts }) {
+  const has = counts.total > 0;
+  return (
+    <div className="lvl">
+      <div className="lvl-head">
+        <span className="lvl-lab">{label}</span>
+        <span className="lvl-total">
+          {has ? `${counts.total} total` : 'nothing uploaded'}
+        </span>
+      </div>
+      <div className="cl-bar" role="img" aria-label={barLabel(counts)}>
+        {has ? (
+          STATES.filter((s) => counts[s] > 0).map((s) => (
+            <span key={s} className={`seg ${s}`} style={{ width: `${counts.pct[s]}%` }} />
+          ))
+        ) : (
+          <span className="seg empty" />
+        )}
+      </div>
+      <dl className="cl-counts">
+        {STATES.map((s) => (
+          <div className={`cl-count ${s}`} key={s}>
+            <dt>{STATE_LABEL[s]}</dt>
+            <dd>{counts[s]}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
 function barLabel(c) {
   if (!c.total) return 'No data uploaded';
-  return `${c.healthy} healthy, ${c.flagged} flagged, ${c.paused} paused`;
+  return STATES.filter((s) => c[s] > 0)
+    .map((s) => `${c[s]} ${s}`)
+    .join(', ');
 }

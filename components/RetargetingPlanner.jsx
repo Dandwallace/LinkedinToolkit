@@ -27,7 +27,7 @@ const SOURCES = {
     rate: 8,
     unit: '% of impressions',
     window: '365 days',
-    next: 'Document ad or case study — they have shown interest but know little yet.',
+    next: 'Document ad or case study. They have shown interest but know little yet.',
     note: 'Fills fastest of any source. A 25% view is a low bar, which is the point at this stage.',
   },
   'Video viewers (75%)': {
@@ -39,7 +39,7 @@ const SOURCES = {
     next: 'Lead Gen Form. Watching three quarters of a video is a genuine signal.',
     note: 'Much smaller but far higher intent. Worth a separate campaign, not a merge with the 25% pool.',
   },
-  'Website visitors — all': {
+  'Website visitors, all': {
     needs: 'tag',
     basis: 'clicks',
     rate: 72,
@@ -48,7 +48,7 @@ const SOURCES = {
     next: 'Case study or comparison content.',
     note: 'Requires the Insight Tag live and verified. Nothing accrues before that, and it cannot be backdated.',
   },
-  'Website visitors — pricing or demo page': {
+  'Website visitors, pricing or demo page': {
     needs: 'tag',
     basis: 'clicks',
     rate: 6,
@@ -82,7 +82,7 @@ const SOURCES = {
     unit: '% of impressions',
     window: '365 days',
     next: 'Consideration content.',
-    note: 'Engagement here means a click, reaction, comment or share — a broader net than clicks alone.',
+    note: 'Engagement here means a click, reaction, comment or share, a broader net than clicks alone.',
   },
   'Company Page visitors': {
     needs: 'page',
@@ -188,7 +188,7 @@ export default function RetargetingPlanner() {
     if (!running.includes('tag')) {
       out.push({
         level: 'blocker',
-        text: 'Without the Insight Tag live, no website audience accrues at all — and it cannot be backdated. Every day it is not installed is a day of retargeting pool permanently lost.',
+        text: 'Without the Insight Tag live, no website audience accrues at all, and it cannot be backdated. Every day it is not installed is a day of retargeting pool permanently lost.',
       });
     }
     if (!running.includes('video') && !running.includes('document')) {
@@ -200,7 +200,7 @@ export default function RetargetingPlanner() {
     if (running.includes('lgf')) {
       out.push({
         level: 'note',
-        text: 'Form openers who did not submit are the single most overlooked audience on most accounts. They were one field from converting — re-serve the same offer with a different angle.',
+        text: 'Form openers who did not submit are the single most overlooked audience on most accounts. They were one field from converting, so re-serve the same offer with a different angle.',
       });
     }
     if (readiness && Number.isFinite(readiness.soonest) && readiness.soonest > 60) {
@@ -215,12 +215,12 @@ export default function RetargetingPlanner() {
     });
     out.push({
       level: 'note',
-      text: 'Pools decay as members fall outside the retargeting window, so a pool that stops being fed shrinks. Awareness spend is not just top-of-funnel — it is what keeps the conversion layer alive.',
+      text: 'Pools decay as members fall outside the retargeting window, so a pool that stops being fed shrinks. Awareness spend is not just top-of-funnel. It is what keeps the conversion layer alive.',
     });
     return out;
   }, [running, readiness]);
 
-  const num = (n) => (Number.isFinite(n) ? Math.round(n).toLocaleString('en-GB') : '—');
+  const num = (n) => (Number.isFinite(n) ? Math.round(n).toLocaleString('en-GB') : 'not set');
   const days = (d) =>
     !Number.isFinite(d) ? 'never at this volume' : d <= 30 ? `${d} days` : `${(d / 30.4).toFixed(1)} months`;
 
@@ -229,7 +229,7 @@ export default function RetargetingPlanner() {
 
   const copyPlan = () => {
     const lines = [
-      `RETARGETING PLAN${linked ? ` — ${linked}` : ''}`,
+      `RETARGETING PLAN${linked ? `: ${linked}` : ''}`,
       `Based on ${num(imp)} impressions and ${num(clk)} clicks per month`,
       '',
       'BUILD THESE, IN THIS ORDER',
@@ -239,7 +239,7 @@ export default function RetargetingPlanner() {
       ),
       '',
       blocked.length ? 'NOT AVAILABLE YET' : '',
-      ...blocked.map((r) => `  ${r.name} — needs ${RUNNING.find((x) => x.key === r.needs)?.label}`),
+      ...blocked.map((r) => `  ${r.name}, needs ${RUNNING.find((x) => x.key === r.needs)?.label}`),
     ];
     navigator.clipboard?.writeText(lines.filter(Boolean).join('\n'));
   };
@@ -313,7 +313,7 @@ export default function RetargetingPlanner() {
                 </label>
                 <p className="hint">
                   Pulled from the forecast where available. Override with real figures once the
-                  account has history — the estimates below are only as good as these two numbers.
+                  account has history. The estimates below are only as good as these two numbers.
                 </p>
               </div>
             </section>
@@ -325,7 +325,7 @@ export default function RetargetingPlanner() {
               </h2>
               <div className="grp-body">
                 <p className="hint tight">
-                  How much of the upstream volume becomes audience members. Conservative defaults —
+                  How much of the upstream volume becomes audience members. Conservative defaults.
                   replace with observed rates as soon as you have them.
                 </p>
                 {rows.map((r) => (

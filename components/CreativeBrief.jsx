@@ -12,9 +12,9 @@ const FORMATS = {
       { key: 'headline', label: 'Headline', limit: 200, visible: 70, rows: 2 },
       { key: 'description', label: 'Description', limit: 70, visible: 70, rows: 2 },
     ],
-    asset: { ratios: ['1:1 — 1200×1200 (recommended)', '1.91:1 — 1200×627', '4:5 — 720×900 (mobile only)'], size: '5 MB', types: 'JPG, PNG, GIF (non-animated)' },
+    asset: { ratios: ['1:1 at 1200×1200 (recommended)', '1.91:1 at 1200×627', '4:5 at 720×900 (mobile only)'], size: '5 MB', types: 'JPG, PNG, GIF (non-animated)' },
     notes: [
-      'Square delivers cleanly on desktop and mobile — the safest single-asset standard.',
+      'Square delivers cleanly on desktop and mobile, the safest single-asset standard.',
       'Vertical 4:5 will not show on desktop at all.',
       'PNG for text overlays, logos and flat colour. JPG for photography.',
     ],
@@ -25,10 +25,10 @@ const FORMATS = {
       { key: 'intro', label: 'Introductory text', limit: 255, visible: 150, rows: 4 },
       { key: 'headline', label: 'Card headline', limit: 45, visible: 45, rows: 2, dynamic: 'carousel' },
     ],
-    asset: { ratios: ['1:1 — 1080×1080 per card (max 4320×4320)'], size: '10 MB per card', types: 'JPG, PNG', extra: '2–10 cards' },
+    asset: { ratios: ['1:1 at 1080×1080 per card (max 4320×4320)'], size: '10 MB per card', types: 'JPG, PNG', extra: '2–10 cards' },
     notes: [
       'Card headline drops from 45 to 30 characters if the CTA points at a Lead Gen Form.',
-      'No description field on cards — the headline is all the text there is.',
+      'No description field on cards, so the headline is all the text there is.',
       'One form for the whole carousel. A different form per card is not supported.',
       'The CTA button appears only on the final card.',
     ],
@@ -39,11 +39,11 @@ const FORMATS = {
       { key: 'intro', label: 'Introductory text', limit: 600, visible: 150, rows: 4 },
       { key: 'headline', label: 'Headline', limit: 200, visible: 70, rows: 2 },
     ],
-    asset: { ratios: ['16:9 — 1920×1080', '1:1 — 1080×1080', '4:5 — 1080×1350', '9:16 — 1080×1920 (mobile only)'], size: '200 MB', types: 'MP4 (preferred), MOV, ASF', extra: '3 seconds to 30 minutes' },
+    asset: { ratios: ['16:9 at 1920×1080', '1:1 at 1080×1080', '4:5 at 1080×1350', '9:16 at 1080×1920 (mobile only)'], size: '200 MB', types: 'MP4 (preferred), MOV, ASF', extra: '3 seconds to 30 minutes' },
     notes: [
       '15–30 seconds performs best for awareness. Longer suits thought leadership.',
       'The 200 MB cap is far tighter than organic video, which allows 5 GB.',
-      'Supply an SRT caption file — most feed viewing is silent.',
+      'Supply an SRT caption file, because most feed viewing is silent.',
     ],
     preview: 'feed',
   },
@@ -52,7 +52,7 @@ const FORMATS = {
       { key: 'intro', label: 'Introductory text', limit: 600, visible: 150, rows: 4 },
       { key: 'headline', label: 'Headline', limit: 200, visible: 70, rows: 2 },
     ],
-    asset: { ratios: ['Portrait, landscape or square — portrait uses the most feed space'], size: '100 MB', types: 'PDF, DOC, DOCX, PPT, PPTX', extra: 'Up to 300 pages' },
+    asset: { ratios: ['Portrait, landscape or square. Portrait uses the most feed space'], size: '100 MB', types: 'PDF, DOC, DOCX, PPT, PPTX', extra: 'Up to 300 pages' },
     notes: [
       'Front-load the value. Page one is the only page guaranteed to be seen.',
       'Read-depth is reported, so the document can be segmented on afterwards.',
@@ -64,7 +64,7 @@ const FORMATS = {
     fields: [{ key: 'intro', label: 'Post text', limit: 3000, visible: 150, rows: 6 }],
     asset: { ratios: ['Inherits whatever the original post used'], size: 'As per the underlying post', types: 'Sponsors an existing organic post from a named member', extra: 'Requires that member to grant permission' },
     notes: [
-      'No separate headline field — the post text is the whole ad.',
+      'No separate headline field, so the post text is the whole ad.',
       'Do not over-produce it. The performance comes from it reading as genuine.',
       'Typically clears a fraction of the cost-per-click of polished brand creative.',
     ],
@@ -76,10 +76,10 @@ const FORMATS = {
       { key: 'description', label: 'Description', limit: 70, visible: 70, rows: 2 },
       { key: 'cta', label: 'CTA text', limit: 18, visible: 18, rows: 1 },
     ],
-    asset: { ratios: ['Logo — 100×100'], size: '2 MB', types: 'JPG, PNG', extra: 'Desktop only' },
+    asset: { ratios: ['Logo at 100×100'], size: '2 MB', types: 'JPG, PNG', extra: 'Desktop only' },
     notes: [
       "Pulls the viewer's own profile photo alongside the client logo, so it reads as personalised.",
-      'Desktop only — worthless against a mobile-heavy audience.',
+      'Desktop only, so it is worthless against a mobile-heavy audience.',
     ],
     preview: 'rail',
   },
@@ -88,7 +88,7 @@ const FORMATS = {
       { key: 'headline', label: 'Headline', limit: 25, visible: 25, rows: 1 },
       { key: 'description', label: 'Description', limit: 75, visible: 75, rows: 2 },
     ],
-    asset: { ratios: ['Thumbnail — 100×100'], size: '2 MB', types: 'JPG, PNG', extra: 'Desktop only' },
+    asset: { ratios: ['Thumbnail at 100×100'], size: '2 MB', types: 'JPG, PNG', extra: 'Desktop only' },
     notes: [
       'The 25-character headline is the real constraint, not the image.',
       'Cheapest inventory on the platform. Supporting reach, not a lead driver.',
@@ -101,7 +101,7 @@ const FORMATS = {
       { key: 'intro', label: 'Message body', limit: 1500, visible: 1500, rows: 8 },
       { key: 'cta', label: 'CTA button', limit: 20, visible: 20, rows: 1 },
     ],
-    asset: { ratios: ['Banner — 300×250 (optional, desktop only)'], size: '2 MB', types: 'JPG, PNG, GIF (non-animated)', extra: 'Up to 3 links and 10 emojis' },
+    asset: { ratios: ['Banner at 300×250 (optional, desktop only)'], size: '2 MB', types: 'JPG, PNG, GIF (non-animated)', extra: 'Up to 3 links and 10 emojis' },
     notes: [
       'Send from a named person, not the company page. It materially outperforms.',
       'EU members must have opted in before they can receive this at all.',
@@ -114,23 +114,59 @@ const FORMATS = {
       { key: 'intro', label: 'Opening message', limit: 500, visible: 500, rows: 6 },
       { key: 'cta', label: 'CTA button', limit: 25, visible: 25, rows: 1, note: 'Up to five buttons per layer' },
     ],
-    asset: { ratios: ['Banner — 300×250 (optional, desktop only)'], size: '2 MB', types: 'JPG, PNG', extra: 'Branching paths, up to 5 buttons per message layer' },
+    asset: { ratios: ['Banner at 300×250 (optional, desktop only)'], size: '2 MB', types: 'JPG, PNG', extra: 'Branching paths, up to 5 buttons per message layer' },
     notes: [
       'Reply rates run roughly three times higher than standard Message Ads.',
       'A Lead Gen Form can sit inside the conversation, so nobody leaves the inbox.',
-      'Include a graceful "not interested" button — it beats the formal opt-out.',
+      'Include a graceful "not interested" button. It beats the formal opt-out.',
       'The opening line does the work of a subject line: name a specific problem.',
     ],
     preview: 'message',
   },
   'Event ad': {
     fields: [{ key: 'intro', label: 'Introductory text', limit: 600, visible: 150, rows: 4 }],
-    asset: { ratios: ['4:1 — pulled from the LinkedIn Event page'], size: 'Set on the Event page', types: 'Requires a LinkedIn Event to exist first' },
+    asset: { ratios: ['4:1, pulled from the LinkedIn Event page'], size: 'Set on the Event page', types: 'Requires a LinkedIn Event to exist first' },
     notes: [
-      'Headline and image come from the Event page — get that right before building the ad.',
+      'Headline and image come from the Event page, so get that right before building the ad.',
       'Can be combined with Conversation Ads so registration happens inside the message.',
     ],
+    /* The Event itself is the real dependency, and it is where these stall.
+     * Listing what it needs turns "make a LinkedIn Event" into a checklist
+     * somebody can actually hand over. */
+    prerequisite: {
+      title: 'The LinkedIn Event has to exist first',
+      body: 'The ad pulls its headline and image from the Event page, so none of the ad copy can be finalised until the Event is live. Setting one up needs all of the following.',
+      items: [
+        'Event name, which becomes the ad headline and cannot be edited per ad',
+        'Date and start time, with the time zone stated',
+        'Format: online, or in person with a venue address',
+        'Description of what attendees get',
+        'Cover image at 4:1, which becomes the ad image',
+        'Registration method: LinkedIn registration form, or an external link',
+      ],
+    },
     preview: 'feed',
+  },
+  /* A follower ad has no creative of its own: LinkedIn assembles it from the
+   * Company Page. Briefing copy for one produces work that is thrown away. */
+  'Follower ad': {
+    fields: [],
+    generated: {
+      title: 'Generated from the Company Page',
+      body: 'A follower ad is built by LinkedIn from the Page itself, using the Page name, logo and a headline picked from a fixed list. There is no copy to write and no image to supply, so there is nothing here for a designer to produce.',
+      supply: [
+        'Page logo, current and correctly cropped, since the ad uses it directly',
+        'Which headline to choose from the preset list LinkedIn offers',
+        'The CTA shown to people who already follow the Page, which is a separate setting',
+      ],
+    },
+    asset: { ratios: ['Taken from the Company Page'], size: 'Not applicable', types: 'No asset upload', extra: 'Dynamic ad format, desktop only' },
+    notes: [
+      'Check the Page logo before launch. Whatever is on the Page is what runs.',
+      'Existing followers see the alternative CTA, so set it deliberately rather than leaving the default.',
+      'Exports label this as Ad Set Type "Dynamic".',
+    ],
+    preview: 'none',
   },
 };
 
@@ -164,7 +200,7 @@ function issuesFor(item) {
     if (v.length > f.limit) {
       out.push({ level: 'blocker', field: f.label, text: `${v.length} characters against a hard limit of ${f.limit}. LinkedIn will reject the upload.` });
     } else if (f.visible < f.limit && v.length > f.visible) {
-      out.push({ level: 'action', field: f.label, text: `Runs past the ${f.visible}-character truncation point — everything after it hides behind "see more".` });
+      out.push({ level: 'action', field: f.label, text: `Runs past the ${f.visible}-character truncation point, so everything after it hides behind "see more".` });
     }
   }
   const head = item.copy.headline || '';
@@ -211,7 +247,7 @@ function buildPdf(jsPDF, brief, items) {
   doc.text('CREATIVE BRIEF · LINKEDIN ADS', M, y, { charSpace: 0.6 });
   y += 7;
   doc.setFont('helvetica', 'bold').setFontSize(19).setTextColor(20, 20, 18);
-  const title = [brief.client || 'Client', brief.campaign].filter(Boolean).join(' — ');
+  const title = [brief.client || 'Client', brief.campaign].filter(Boolean).join(', ');
   doc.text(doc.splitTextToSize(title, COL - 55), M, y);
 
   const meta = [
@@ -342,7 +378,7 @@ function buildPdf(jsPDF, brief, items) {
     for (const f of flds) {
       const v = item.copy[f.key] || '';
       const over = v.length > f.limit;
-      const lines = doc.splitTextToSize(v || '— to be written —', COL - 32 - 40);
+      const lines = doc.splitTextToSize(v || 'to be written', COL - 32 - 40);
       need(lines.length * 3.6 + 6);
       doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...GREY);
       doc.text(f.label, M, y);
@@ -395,7 +431,7 @@ function buildPdf(jsPDF, brief, items) {
     doc.setDrawColor(180, 178, 168).setLineWidth(0.2).line(M, 288, RIGHT, 288);
     doc.setFont('helvetica', 'normal').setFontSize(6.5).setTextColor(...GREY);
     doc.text(
-      'Character limits are LinkedIn\'s own. "Visible" is where the feed truncates — copy past that point hides behind a click. "Max" is where upload is rejected.',
+      'Character limits are LinkedIn\'s own. "Visible" is where the feed truncates, so copy past that point hides behind a click. "Max" is where upload is rejected.',
       M, 291.5
     );
     doc.text(`${p} / ${pages}`, RIGHT, 291.5, { align: 'right' });
@@ -420,13 +456,33 @@ export default function CreativeBrief() {
 
   useEffect(() => { if (!activeId && items.length) setActiveId(items[0].id); }, [items, activeId]);
 
+  /* Seeded from the intake form: the campaign name is the one typed there,
+   * not the objective, and the formats chosen there arrive as creatives so
+   * nobody re-enters the same list twice. */
   useEffect(() => {
     (async () => {
       try {
         const r = await window.storage.get('brief:current');
-        if (r?.value) {
-          const b = JSON.parse(r.value);
-          setBrief((p) => ({ ...p, client: b.client || '', campaign: b.objective || '' }));
+        if (!r?.value) return;
+        const b = JSON.parse(r.value);
+        setBrief((p) => ({
+          ...p,
+          client: b.client || '',
+          campaign: b.campaignName || '',
+          objective: OBJECTIVES.includes(b.objective) ? b.objective : p.objective,
+        }));
+        const picks = (b.creatives || []).filter((c) => FORMATS[c.format]);
+        if (picks.length) {
+          const seeded = picks.map((c) => ({
+            id: nextId(),
+            format: c.format,
+            copy: {},
+            carouselCta: 'Landing page',
+            quantity: Math.min(20, Math.max(1, Number(c.quantity) || 1)),
+            notes: '',
+          }));
+          setItems(seeded);
+          setActiveId(seeded[0].id);
         }
       } catch { /* no saved brief */ }
     })();
@@ -473,7 +529,7 @@ export default function CreativeBrief() {
     const { jsPDF } = await import('jspdf');
     const doc = buildPdf(jsPDF, brief, items);
     const name = [brief.client || 'Creative brief', brief.campaign, new Date().toISOString().slice(0, 10)]
-      .filter(Boolean).join(' — ').replace(/[^\w\s—-]/g, '');
+      .filter(Boolean).join(', ').replace(/[^\w\s,-]/g, '');
     doc.save(`${name}.pdf`);
     setExporting(false);
   };
@@ -505,10 +561,10 @@ export default function CreativeBrief() {
               <h2 className="grp-head"><span className="grp-letter">A</span>Brief</h2>
               <div className="grp-body">
                 <label className="row"><span className="row-label">Client</span>
-                  <input className="inp" value={brief.client} placeholder="—"
+                  <input className="inp" value={brief.client} placeholder="Client name"
                     onChange={(e) => setBrief((p) => ({ ...p, client: e.target.value }))} /></label>
                 <label className="row"><span className="row-label">Campaign</span>
-                  <input className="inp" value={brief.campaign} placeholder="—"
+                  <input className="inp" value={brief.campaign} placeholder="Campaign name"
                     onChange={(e) => setBrief((p) => ({ ...p, campaign: e.target.value }))} /></label>
                 <div className="row obj-row">
                   <span className="row-label">Campaign objective</span>
@@ -589,6 +645,30 @@ export default function CreativeBrief() {
                       ))}
                     </div>
                   )}
+                  {spec.generated && (
+                    <div className="genblock">
+                      <div className="genblock-head">{spec.generated.title}</div>
+                      <p className="genblock-body">{spec.generated.body}</p>
+                      <div className="genblock-lab">What to supply instead</div>
+                      <ul className="genblock-list">
+                        {spec.generated.supply.map((x) => (
+                          <li key={x}>{x}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {spec.prerequisite && (
+                    <div className="genblock pre">
+                      <div className="genblock-head">{spec.prerequisite.title}</div>
+                      <p className="genblock-body">{spec.prerequisite.body}</p>
+                      <ul className="genblock-list">
+                        {spec.prerequisite.items.map((x) => (
+                          <li key={x}>{x}</li>
+                        ))}
+                      </ul>
+                      <div className="genblock-lab">Then the ad copy below sits on top of it</div>
+                    </div>
+                  )}
                   {activeFields.map((f) => {
                     const v = active.copy[f.key] || '';
                     const over = v.length > f.limit;
@@ -662,10 +742,28 @@ export default function CreativeBrief() {
                       )}
                     </div>
                   )}
+                  {spec.preview === 'none' && (
+                    <div className="post nopv">
+                      <div className="post-top">
+                        <div className="avatar" />
+                        <div>
+                          <div className="post-name">{brief.client || 'Client name'}</div>
+                          <div className="post-sub">Promoted</div>
+                        </div>
+                        <button type="button" className="post-follow" disabled>
+                          + Follow
+                        </button>
+                      </div>
+                      <p className="nopv-note">
+                        LinkedIn assembles this from the Company Page. There is no creative to
+                        preview because there is no creative to make.
+                      </p>
+                    </div>
+                  )}
                   {spec.preview === 'feed' && (
                     <p className="pv-note">
                       {brief.objective === FOLLOW_OBJECTIVE
-                        ? 'Engagement campaigns carry a Follow button beside the page name. Leave room for it — it sits over the top-right of the post header.'
+                        ? 'Engagement campaigns carry a Follow button beside the page name. Leave room for it, because it sits over the top-right of the post header.'
                         : `No Follow button on ${brief.objective.toLowerCase()} campaigns. LinkedIn only adds it for Engagement.`}
                     </p>
                   )}
@@ -780,6 +878,19 @@ const CSS = `
   border:1px solid var(--rule);color:var(--ink-2);cursor:pointer;}
 .ct.on{background:var(--stamp);color:#fff;border-color:var(--stamp);}
 .ct:focus-visible{outline:2px solid var(--carbon);outline-offset:2px;}
+.genblock{border-left:3px solid var(--carbon);background:#F5F4FA;padding:11px 13px;
+  margin-bottom:14px;}
+.genblock.pre{border-left-color:var(--stamp);background:#FBF6EC;}
+.genblock-head{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:11px;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--carbon);margin-bottom:5px;}
+.genblock.pre .genblock-head{color:var(--stamp);}
+.genblock-body{margin:0 0 8px;font-size:12.5px;line-height:1.55;color:#4E4A33;}
+.genblock-lab{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:9px;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2);margin:8px 0 4px;}
+.genblock-list{margin:0;padding-left:16px;}
+.genblock-list li{font-size:12.5px;line-height:1.55;color:#4E4A33;margin-bottom:4px;}
+.nopv{padding-bottom:10px;}
+.nopv-note{margin:0;padding:0 12px;font-size:11.5px;line-height:1.5;color:#7A7A72;}
 .fld{margin-bottom:14px;}
 .fld-top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px;}
 .fld-label{font-family:'Archivo Narrow',sans-serif;font-weight:600;font-size:11px;

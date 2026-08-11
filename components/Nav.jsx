@@ -31,6 +31,7 @@ export default function Nav() {
   return (
     <nav className="topbar">
       <Link href="/" className="topbar-brand">
+        <img className="topbar-mark" src="/logos/whitehart.jpg" alt="" width={20} height={20} />
         LinkedIn Ads <em>· Whitehart</em>
       </Link>
       {TOOLS.map((t) => (

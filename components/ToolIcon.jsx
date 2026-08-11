@@ -39,7 +39,7 @@ const PATHS = {
     </>
   ),
   /* trend line on axes */
-  performance: (
+  reporting: (
     <>
       <path d="M4.5 4v15.5H20" />
       <path d="M7.5 15.5l4-5 3 3 5-7.5" />
@@ -81,13 +81,6 @@ const PATHS = {
     <>
       <circle cx="12" cy="12" r="8.5" />
       <path d="M12 6.8v5.6l3.6 2.1" />
-    </>
-  ),
-  /* bars */
-  reporting: (
-    <>
-      <path d="M4.5 20V11M9.8 20V5M15.2 20v-6.5M20.5 20V8.5" />
-      <path d="M3 20.5h18" />
     </>
   ),
   /* gauge */

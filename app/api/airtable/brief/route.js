@@ -30,7 +30,7 @@ export async function POST(request) {
   }
   if (!String(brief.client || '').trim()) {
     return NextResponse.json(
-      { ok: false, error: 'Add a client name before saving — Airtable records without one are unfindable.' },
+      { ok: false, error: 'Add a client name before saving, because Airtable records without one are unfindable.' },
       { status: 400 }
     );
   }
