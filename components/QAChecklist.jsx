@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { hasObjective } from '@/lib/brief';
 
 /* ------------------------------------------------------------------ *
  * The checklist.
@@ -126,7 +127,7 @@ const ITEMS = [
     section: 'Budget & schedule',
     label: 'Frequency cap set',
     why: 'Without one, engagement decays and negative feedback climbs as the same people see the ad repeatedly.',
-    when: (b) => b.objective === 'Brand awareness',
+    when: (b) => hasObjective(b, 'Brand awareness'),
   },
 
   /* ---- creative ---- */

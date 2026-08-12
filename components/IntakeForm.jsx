@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { downloadBriefPdf } from '@/lib/brief-pdf';
 import { CLIENTS } from '@/lib/client-store';
+import { hasObjective } from '@/lib/brief';
 
 const CLIENT_NAMES = CLIENTS.map((c) => c.name);
 
@@ -27,11 +28,6 @@ const SECTORS = {
   'Media & communications': { cpc: 6.5, cpl: 80, ctr: 0.58 },
   'Other / not listed': { cpc: 9.0, cpl: 100, ctr: 0.45 },
 };
-
-/* The accounts are sold by region, not by country, so the brief captures
- * regions. Stored as a comma-joined string so everything downstream that
- * already treats markets as text keeps working. */
-const MARKETS = ['EMEA', 'US', 'APAC'];
 
 const OBJECTIVES = [
   'Brand awareness',
@@ -124,7 +120,7 @@ function analyse(b) {
     );
   }
 
-  if (b.leadRouting === 'No' && b.objective === 'Lead generation') {
+  if (b.leadRouting === 'No' && hasObjective(b, 'Lead generation')) {
     add(
       'blocker',
       'Lead routing not in place',
@@ -166,7 +162,7 @@ function analyse(b) {
     );
   }
 
-  if (b.landingPages === 'No' && ['Lead generation', 'Website conversions'].includes(b.objective)) {
+  if (b.landingPages === 'No' && hasObjective(b, 'Lead generation', 'Website conversions')) {
     add(
       'action',
       'Default to Lead Gen Forms',
@@ -174,7 +170,7 @@ function analyse(b) {
     );
   }
 
-  if (b.runningNow === 'No' && b.objective === 'Lead generation') {
+  if (b.runningNow === 'No' && hasObjective(b, 'Lead generation')) {
     add(
       'action',
       'Cold audience, conversion objective',
@@ -569,14 +565,18 @@ export default function IntakeForm() {
               <Field label="Website / landing page">
                 <Text value={b.website} onChange={set('website')} placeholder="example.com" />
               </Field>
-              <Field label="Markets" hint="hold ctrl or cmd for more than one">
-                <Multi value={b.markets} onChange={set('markets')} options={MARKETS} />
+              <Field label="Markets">
+                <Text
+                  value={b.markets}
+                  onChange={set('markets')}
+                  placeholder="EMEA, US, APAC"
+                />
               </Field>
             </Section>
 
             <Section letter="B" title="Objective & targets">
-              <Field label="Campaign objective">
-                <Choose value={b.objective} onChange={set('objective')} options={OBJECTIVES} />
+              <Field label="Campaign objective" hint="hold ctrl or cmd for more than one">
+                <Multi value={b.objective} onChange={set('objective')} options={OBJECTIVES} />
               </Field>
               <Field label="Success looks like" hint="their words">
                 <Area
@@ -954,14 +954,16 @@ const CSS = `
 .fld {
   display: grid; grid-template-columns: 190px 1fr;
   align-items: baseline; gap: 14px;
-  padding: 9px 0 8px;
+  /* More headroom: the value sat almost on the dotted rule of the field
+   * above, which read as the input belonging to the wrong label. */
+  padding: 14px 0 10px;
   border-bottom: 1px dotted var(--rule);
 }
 .fld:last-child { border-bottom: none; }
 .fld-label {
   font-family: 'Archivo Narrow', sans-serif; font-weight: 600;
   font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--ink-2); padding-top: 3px;
+  color: var(--ink-2); padding-top: 4px;
 }
 .fld-hint {
   display: block; font-style: normal; font-weight: 600;
