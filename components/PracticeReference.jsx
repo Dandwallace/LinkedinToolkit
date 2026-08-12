@@ -446,14 +446,17 @@ function staleness(iso) {
  * returns the page to what was last verified in the repository rather than
  * to nothing. */
 const CHECKED_KEY = 'reference:checked';
+const FOUND_KEY = 'reference:found';
 
 export default function PracticeReference() {
   const [query, setQuery] = useState('');
   const [cats, setCats] = useState([]);
   const [types, setTypes] = useState([]);
   const [staleOnly, setStaleOnly] = useState(false);
-  const [review, setReview] = useState(false);
   const [checked, setChecked] = useState({});
+  const [found, setFound] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [searchNote, setSearchNote] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -463,8 +466,58 @@ export default function PracticeReference() {
       } catch {
         /* nothing re-checked in this browser yet */
       }
+      try {
+        const r = await window.storage.get(FOUND_KEY);
+        setFound(JSON.parse(r.value) || []);
+      } catch {
+        /* nothing found yet */
+      }
     })();
   }, []);
+
+  /* Searching only ever ADDS. Found entries sit above the curated list,
+   * flagged unverified, and nothing already there is touched. */
+  const search = async () => {
+    setSearching(true);
+    setSearchNote(null);
+    try {
+      const res = await fetch('/api/practices/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          since: latestVerified,
+          known: PRACTICES.map((p) => p.headline),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        setSearchNote({ bad: true, text: json.error || `Search failed (${res.status})` });
+      } else if (!json.entries.length) {
+        setSearchNote({ text: 'Nothing new found. The entries below still stand.' });
+      } else {
+        /* De-duplicate on URL so running it twice does not stack copies. */
+        const seen = new Set(found.map((f) => f.source.url));
+        const fresh = json.entries.filter((e) => !seen.has(e.source.url));
+        const next = [...fresh, ...found];
+        setFound(next);
+        await window.storage.set(FOUND_KEY, JSON.stringify(next)).catch(() => {});
+        setSearchNote({
+          text: fresh.length
+            ? `Added ${fresh.length} new item${fresh.length === 1 ? '' : 's'} at the top. Nothing below was changed.`
+            : 'Everything found was already on the list.',
+        });
+      }
+    } catch (err) {
+      setSearchNote({ bad: true, text: `Could not reach the server: ${err.message}` });
+    }
+    setSearching(false);
+  };
+
+  const dismissFound = async (id) => {
+    const next = found.filter((f) => f.id !== id);
+    setFound(next);
+    await window.storage.set(FOUND_KEY, JSON.stringify(next)).catch(() => {});
+  };
 
   const markChecked = async (id) => {
     const next = { ...checked, [id]: new Date().toISOString().slice(0, 10) };
@@ -475,6 +528,13 @@ export default function PracticeReference() {
       /* storage full; the tick still shows for this session */
     }
   };
+
+  /* Search from the newest thing already on the page: anything older than
+   * that is by definition already covered. */
+  const latestVerified = useMemo(
+    () => PRACTICES.reduce((max, p) => (p.verified > max ? p.verified : max), '2026-01-01'),
+    []
+  );
 
   const enriched = useMemo(
     () =>
@@ -491,7 +551,6 @@ export default function PracticeReference() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return enriched.filter((p) => {
-      if (review && p.stale.level === 'ok') return false;
       if (cats.length && !cats.includes(p.category)) return false;
       if (types.length && !types.includes(p.source.type)) return false;
       if (staleOnly && p.stale.level === 'ok') return false;
@@ -501,7 +560,7 @@ export default function PracticeReference() {
         .toLowerCase()
         .includes(q);
     });
-  }, [enriched, query, cats, types, staleOnly, review]);
+  }, [enriched, query, cats, types, staleOnly]);
 
   const counts = useMemo(() => {
     const byType = { official: 0, industry: 0, vendor: 0 };
@@ -572,13 +631,12 @@ export default function PracticeReference() {
             ))}
             <button type="button" className={staleOnly ? 'f warn on' : 'f warn'}
               onClick={() => setStaleOnly((v) => !v)}>Due a re-check</button>
-            <button type="button" className={review ? 'f rev on' : 'f rev'}
-              onClick={() => setReview((v) => !v)}>
-              {review ? 'Leave review mode' : `Review mode (${counts.needsReview})`}
+            <button type="button" className="f rev" onClick={search} disabled={searching}>
+              {searching ? 'Searching…' : 'Search for updates'}
             </button>
-            {(cats.length || types.length || staleOnly || query || review) && (
+            {(cats.length || types.length || staleOnly || query) && (
               <button type="button" className="f clear"
-                onClick={() => { setCats([]); setTypes([]); setStaleOnly(false); setQuery(''); setReview(false); }}>
+                onClick={() => { setCats([]); setTypes([]); setStaleOnly(false); setQuery(''); }}>
                 Clear
               </button>
             )}
@@ -586,20 +644,49 @@ export default function PracticeReference() {
         </div>
 
         <div className="body">
-          {review && (
-            <div className="revbar">
-              <strong>Review mode.</strong> Showing the {counts.needsReview} entr
-              {counts.needsReview === 1 ? 'y' : 'ies'} last verified more than six months ago.
-              Open the source, confirm it still says this, then mark it checked. The date is
-              stored in this browser and overrides the one in the source file.
-            </div>
+          {searchNote && (
+            <div className={searchNote.bad ? 'revbar bad' : 'revbar'}>{searchNote.text}</div>
           )}
-          {review && !filtered.length && (
-            <p className="empty">Nothing is older than six months. Everything here is current.</p>
+
+          {found.length > 0 && (
+            <section className="cat found">
+              <h2 className="cat-head">
+                Found by search, unverified
+                <span className="cat-n">{found.length}</span>
+              </h2>
+              <p className="found-note">
+                These came from a web search and nobody has checked them. Open the source, and if
+                it holds, add it to the PRACTICES array in this component so it becomes part of
+                the reference properly. Nothing below was altered.
+              </p>
+              {found.map((p) => (
+                <article className="prac isnew" key={p.id}>
+                  <div className="prac-left">
+                    <div className="prac-headline">{p.headline}</div>
+                    <div className="badge t-new">Unverified</div>
+                  </div>
+                  <div className="prac-body">
+                    <p className="prac-statement">{p.practice}</p>
+                    {p.why && <p className="prac-why">{p.why}</p>}
+                    <div className="prac-source">
+                      <a href={p.source.url} target="_blank" rel="noopener noreferrer">
+                        {p.source.name}
+                      </a>
+                      <span className="ver amber">
+                        {p.published ? `Published ${p.published}` : 'No date given'} · found{' '}
+                        {p.found}
+                      </span>
+                      <button type="button" className="checkbtn" onClick={() => dismissFound(p.id)}>
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </section>
           )}
-          {!review && !filtered.length && (
-            <p className="empty">Nothing matches those filters.</p>
-          )}
+
+          {!filtered.length && <p className="empty">Nothing matches those filters.</p>}
 
           {grouped.map((g) => (
             <section className="cat" key={g.category}>
@@ -623,7 +710,7 @@ export default function PracticeReference() {
                       ) : (
                         <span className="nosrc">{p.source.name}, no single canonical URL</span>
                       )}
-                      {(review || p.stale.level !== 'ok') && (
+                      {p.stale.level !== 'ok' && (
                         <button
                           type="button"
                           className="checkbtn"
@@ -664,7 +751,14 @@ export default function PracticeReference() {
 
 const CSS = `
 .f.rev{border-color:var(--carbon);color:var(--carbon);}
-.f.rev.on{background:var(--carbon);color:var(--white);border-color:var(--carbon);}
+.f.rev:hover:not(:disabled){background:var(--carbon);color:var(--white);}
+.f.rev:disabled{opacity:.5;cursor:default;}
+.cat.found .cat-head{background:#F5F4FA;color:var(--carbon);}
+.found-note{margin:0;padding:9px 16px;font-size:11.5px;line-height:1.55;color:#4E4A33;
+  background:#FBFAF6;border-bottom:1px solid var(--rule);}
+.prac.isnew{background:#FBFAF6;}
+.badge.t-new{background:var(--amber);color:var(--white);border-color:var(--amber);}
+.revbar.bad{background:#F9EDE9;color:#7A3B22;}
 .revbar{padding:11px 16px;background:#F5F4FA;border-bottom:1px solid var(--rule);
   font-size:12.5px;line-height:1.6;color:#3B3E62;}
 .checkbtn{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:9px;

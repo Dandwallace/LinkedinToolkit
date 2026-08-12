@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { installStorageShim, storage } from '@/lib/storage';
-import { TOOLS, API_TOOLS, SETUP } from '@/lib/tools';
+import { TOOLS, API_TOOLS, BRIEFS, SETUP } from '@/lib/tools';
 
 /**
  * The storage shim is installed here, before any tool renders, because the
@@ -59,6 +59,13 @@ export default function Nav() {
           Active brief <strong>{client}</strong>
         </span>
       )}
+      <Link
+        href={`/${BRIEFS.route}`}
+        className="navlink setup"
+        data-active={pathname === `/${BRIEFS.route}`}
+      >
+        {BRIEFS.name}
+      </Link>
       <Link
         href={`/${SETUP.route}`}
         className="navlink setup"

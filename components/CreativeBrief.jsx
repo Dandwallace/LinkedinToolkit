@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { loadLogo, drawLogo, LOGO_WIDTH_MM } from '@/lib/pdf-logo';
+import { objectivesOf } from '@/lib/brief';
 
 /* ------------------------------------------------------------------ *
  * Format specifications — verified against published 2026 spec guides.
@@ -10,11 +12,11 @@ const FORMATS = {
     fields: [
       { key: 'intro', label: 'Introductory text', limit: 600, visible: 150, rows: 4 },
       { key: 'headline', label: 'Headline', limit: 200, visible: 70, rows: 2 },
-      { key: 'description', label: 'Description', limit: 70, visible: 70, rows: 2 },
     ],
     asset: { ratios: ['1:1 at 1200×1200 (recommended)', '1.91:1 at 1200×627', '4:5 at 720×900 (mobile only)'], size: '5 MB', types: 'JPG, PNG, GIF (non-animated)' },
     notes: [
       'Square delivers cleanly on desktop and mobile, the safest single-asset standard.',
+      'There is no description to write. The field exists in Campaign Manager but does not render in the feed, so it is internal only.',
       'Vertical 4:5 will not show on desktop at all.',
       'PNG for text overlays, logos and flat colour. JPG for photography.',
     ],
@@ -54,9 +56,10 @@ const FORMATS = {
     ],
     asset: { ratios: ['Portrait, landscape or square. Portrait uses the most feed space'], size: '100 MB', types: 'PDF, DOC, DOCX, PPT, PPTX', extra: 'Up to 300 pages' },
     notes: [
-      'Front-load the value. Page one is the only page guaranteed to be seen.',
+      'Ungated, members can read the whole document in the feed.',
+      'Gated behind a Lead Gen Form, they see a preview of the first pages, five by default, and fill the form to get the rest. Put the argument in those pages and the payoff behind the form.',
+      'A Lead Gen Form cannot be attached to a single-page document, because at least one page has to remain as the preview.',
       'Read-depth is reported, so the document can be segmented on afterwards.',
-      'Decide upfront whether it is gated behind a Lead Gen Form.',
     ],
     preview: 'feed',
   },
@@ -147,26 +150,36 @@ const FORMATS = {
     },
     preview: 'feed',
   },
-  /* A follower ad has no creative of its own: LinkedIn assembles it from the
-   * Company Page. Briefing copy for one produces work that is thrown away. */
+  /* A follower ad is a Dynamic Ad. LinkedIn assembles it per viewer from
+   * the Company Page and that member's own profile, so there is no image to
+   * design, but there are two short copy fields to choose or write. */
   'Follower ad': {
-    fields: [],
+    fields: [
+      { key: 'headline', label: 'Headline', limit: 50, visible: 50, rows: 2, note: 'Pick one of LinkedIn\'s suggested headlines or write your own. Internal note: the viewer sees their own first name alongside this.' },
+      { key: 'description', label: 'Description', limit: 70, visible: 70, rows: 2, note: 'Suggested options are offered here too.' },
+    ],
     generated: {
-      title: 'Generated from the Company Page',
-      body: 'A follower ad is built by LinkedIn from the Page itself, using the Page name, logo and a headline picked from a fixed list. There is no copy to write and no image to supply, so there is nothing here for a designer to produce.',
+      title: 'Assembled per viewer from the Page and their profile',
+      body: 'A follower ad is personalised: each member sees their own profile photo next to the company logo, with their first name and the company name in the copy. Nobody else sees their details. There is no ad image to produce, so the design work is the Page logo and nothing else.',
       supply: [
-        'Page logo, current and correctly cropped, since the ad uses it directly',
-        'Which headline to choose from the preset list LinkedIn offers',
-        'The CTA shown to people who already follow the Page, which is a separate setting',
+        'Company Page logo, at least 100 x 100 JPG or PNG, since the ad uses it directly',
+        'Headline, up to 50 characters, chosen from the suggestions or written',
+        'Description, up to 70 characters',
+        'Company name as it should read, up to 25 characters, shown on hovering the logo',
+        'The CTA existing followers see: Visit company, Visit jobs, or Visit life. Non-followers always see Follow',
+      ],
+      caveats: [
+        'Members who have opted out of ad personalisation will not see it.',
+        'With no profile photo available the logo centres instead; with no name available it reads "LinkedIn Member".',
       ],
     },
-    asset: { ratios: ['Taken from the Company Page'], size: 'Not applicable', types: 'No asset upload', extra: 'Dynamic ad format, desktop only' },
+    asset: { ratios: ['Company logo, 100 x 100 minimum'], size: '2 MB', types: 'JPG, PNG', extra: 'Dynamic ad format, desktop only' },
     notes: [
       'Check the Page logo before launch. Whatever is on the Page is what runs.',
-      'Existing followers see the alternative CTA, so set it deliberately rather than leaving the default.',
+      'Non-followers see Follow. Existing followers see the alternative CTA you pick, so set it deliberately.',
       'Exports label this as Ad Set Type "Dynamic".',
     ],
-    preview: 'none',
+    preview: 'follower',
   },
 };
 
@@ -214,7 +227,7 @@ function issuesFor(item) {
 /* ------------------------------------------------------------------ *
  * PDF generation
  * ------------------------------------------------------------------ */
-function buildPdf(jsPDF, brief, items) {
+function buildPdf(jsPDF, brief, items, logo = null) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const W = 210, M = 15, RIGHT = W - M, COL = W - M * 2;
   let y = 0;
@@ -243,6 +256,7 @@ function buildPdf(jsPDF, brief, items) {
 
   /* ---- header ---- */
   y = 20;
+  drawLogo(doc, logo, { x: RIGHT - LOGO_WIDTH_MM, y: y - 6 });
   doc.setFont('helvetica', 'bold').setFontSize(7).setTextColor(...NAVY);
   doc.text('CREATIVE BRIEF · LINKEDIN ADS', M, y, { charSpace: 0.6 });
   y += 7;
@@ -258,23 +272,49 @@ function buildPdf(jsPDF, brief, items) {
     ['Assets to produce', String(items.reduce((n, i) => n + (Number(i.quantity) || 0), 0))],
   ].filter(Boolean);
 
-  let my = y - 5;
+  /* Label above value, both right-aligned, so a long value cannot run
+   * through its own label. */
+  let my = y + 8;
   for (const [k, v] of meta) {
     doc.setFont('helvetica', 'bold').setFontSize(6.5).setTextColor(...GREY);
-    doc.text(k.toUpperCase(), RIGHT - 42, my, { charSpace: 0.3 });
+    doc.text(k.toUpperCase(), RIGHT, my, { align: 'right', charSpace: 0.3 });
+    my += 3.6;
     doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(20, 20, 18);
-    doc.text(v, RIGHT, my, { align: 'right' });
-    my += 4.6;
+    const lines = doc.splitTextToSize(String(v), 60);
+    doc.text(lines, RIGHT, my, { align: 'right' });
+    my += lines.length * 3.9 + 2.4;
   }
   y = Math.max(y + 6, my) + 1;
   rule(0.6, [20, 20, 18]);
   y += 7;
 
-  /* ---- brand direction ---- */
+  /* ---- direction, split by who it is for ---- */
   if (brief.notes) {
-    label('Brand direction');
+    label('Design direction');
     y += 4;
+    doc.setFont('helvetica', 'normal').setFontSize(9);
     y += body(brief.notes, M, COL, 9);
+    y += 6;
+  }
+  if (brief.copyNotes) {
+    label('Copy direction');
+    y += 4;
+    doc.setFont('helvetica', 'normal').setFontSize(9);
+    y += body(brief.copyNotes, M, COL, 9);
+    y += 6;
+  }
+  /* The objective changes what LinkedIn renders around the ad, so the
+   * designer needs it stated rather than inferred. */
+  if (brief.objective) {
+    label('Objective');
+    y += 4;
+    doc.setFont('helvetica', 'normal').setFontSize(9);
+    y += body(
+      brief.objective === FOLLOW_OBJECTIVE
+        ? `${brief.objective}. LinkedIn adds a Follow button to the post header on this objective, so leave room top right.`
+        : `${brief.objective}. No Follow button on this objective; LinkedIn only adds one for ${FOLLOW_OBJECTIVE}.`,
+      M, COL, 9
+    );
     y += 6;
   }
 
@@ -378,6 +418,7 @@ function buildPdf(jsPDF, brief, items) {
     for (const f of flds) {
       const v = item.copy[f.key] || '';
       const over = v.length > f.limit;
+      doc.setFont('helvetica', 'normal').setFontSize(8.5);
       const lines = doc.splitTextToSize(v || 'to be written', COL - 32 - 40);
       need(lines.length * 3.6 + 6);
       doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...GREY);
@@ -398,7 +439,7 @@ function buildPdf(jsPDF, brief, items) {
     if (item.notes) {
       need(14);
       y += 2;
-      label('Direction');
+      label('Copywriting notes');
       y += 4;
       y += body(item.notes, M, COL, 8.5);
       y += 4;
@@ -448,6 +489,7 @@ export default function CreativeBrief() {
     objective: OBJECTIVES[0],
     deadline: '',
     notes: '',
+    copyNotes: '',
   });
   const [items, setItems] = useState([
     { id: nextId(), format: 'Single image', copy: {}, carouselCta: 'Landing page', quantity: 1, notes: '' },
@@ -469,7 +511,7 @@ export default function CreativeBrief() {
           ...p,
           client: b.client || '',
           campaign: b.campaignName || '',
-          objective: OBJECTIVES.includes(b.objective) ? b.objective : p.objective,
+          objective: objectivesOf(b).find((o) => OBJECTIVES.includes(o)) || p.objective,
         }));
         const picks = (b.creatives || []).filter((c) => FORMATS[c.format]);
         if (picks.length) {
@@ -526,8 +568,8 @@ export default function CreativeBrief() {
    * keeps this page the same weight as every other tool. */
   const exportPdf = async () => {
     setExporting(true);
-    const { jsPDF } = await import('jspdf');
-    const doc = buildPdf(jsPDF, brief, items);
+    const [{ jsPDF }, logo] = await Promise.all([import('jspdf'), loadLogo()]);
+    const doc = buildPdf(jsPDF, brief, items, logo);
     const name = [brief.client || 'Creative brief', brief.campaign, new Date().toISOString().slice(0, 10)]
       .filter(Boolean).join(', ').replace(/[^\w\s,-]/g, '');
     doc.save(`${name}.pdf`);
@@ -543,6 +585,8 @@ export default function CreativeBrief() {
             <div className="mast-eyebrow">LinkedIn Ads · Whitehart</div>
             <h1 className="mast-title">Creative brief</h1>
             <div className="linked">
+              {brief.objective}
+              {' · '}
               {items.length} creative{items.length === 1 ? '' : 's'} · {totalAssets} asset{totalAssets === 1 ? '' : 's'}
               {blockerCount > 0 && ` · ${blockerCount} over limit`}
             </div>
@@ -583,10 +627,24 @@ export default function CreativeBrief() {
                 <label className="row"><span className="row-label">Assets needed by</span>
                   <input className="inp" type="date" value={brief.deadline}
                     onChange={(e) => setBrief((p) => ({ ...p, deadline: e.target.value }))} /></label>
-                <label className="stack"><span className="row-label">Brand notes for the designer</span>
+                <label className="stack">
+                  <span className="row-label">Design direction</span>
+                  <span className="row-hint">
+                    For the designer. Brand guidelines, art direction, imagery, colour, anything
+                    to avoid visually.
+                  </span>
                   <textarea className="ta" rows={3} value={brief.notes}
-                    placeholder="Brand guidelines, tone, anything to avoid…"
+                    placeholder="Brand guidelines, art direction, imagery to use or avoid…"
                     onChange={(e) => setBrief((p) => ({ ...p, notes: e.target.value }))} /></label>
+                <label className="stack">
+                  <span className="row-label">Copy direction</span>
+                  <span className="row-hint">
+                    For whoever writes the words. Proposition, tone of voice, claims that are
+                    allowed, terms that are not.
+                  </span>
+                  <textarea className="ta" rows={3} value={brief.copyNotes || ''}
+                    placeholder="Proposition, tone, approved claims, words to avoid…"
+                    onChange={(e) => setBrief((p) => ({ ...p, copyNotes: e.target.value }))} /></label>
               </div>
             </section>
 
@@ -648,12 +706,22 @@ export default function CreativeBrief() {
                     <div className="genblock">
                       <div className="genblock-head">{spec.generated.title}</div>
                       <p className="genblock-body">{spec.generated.body}</p>
-                      <div className="genblock-lab">What to supply instead</div>
+                      <div className="genblock-lab">What to supply</div>
                       <ul className="genblock-list">
                         {spec.generated.supply.map((x) => (
                           <li key={x}>{x}</li>
                         ))}
                       </ul>
+                      {spec.generated.caveats && (
+                        <>
+                          <div className="genblock-lab">Worth knowing</div>
+                          <ul className="genblock-list">
+                            {spec.generated.caveats.map((x) => (
+                              <li key={x}>{x}</li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
                     </div>
                   )}
                   {spec.prerequisite && (
@@ -692,9 +760,14 @@ export default function CreativeBrief() {
                       </div>
                     );
                   })}
-                  <label className="stack"><span className="row-label">Direction for this creative</span>
+                  <label className="stack">
+                    <span className="row-label">Copywriting notes for this creative</span>
+                    <span className="row-hint">
+                      What this particular execution has to say and why. The overall design
+                      direction is set once in section A.
+                    </span>
                     <textarea className="ta" rows={2} value={active.notes}
-                      placeholder="Art direction, imagery, what it needs to convey…"
+                      placeholder="The angle, the proof point, what it has to land…"
                       onChange={(e) => setItem(active.id, { notes: e.target.value })} /></label>
                 </div>
               </section>
@@ -741,21 +814,30 @@ export default function CreativeBrief() {
                       )}
                     </div>
                   )}
-                  {spec.preview === 'none' && (
-                    <div className="post nopv">
-                      <div className="post-top">
-                        <div className="avatar" />
-                        <div>
-                          <div className="post-name">{brief.client || 'Client name'}</div>
-                          <div className="post-sub">Promoted</div>
+                  {spec.preview === 'follower' && (
+                    <div className="dyn">
+                      <div className="dyn-badge">As each viewer sees it</div>
+                      <div className="dyn-card">
+                        <div className="dyn-imgs">
+                          <span className="dyn-logo">{(brief.client || 'C').charAt(0)}</span>
+                          <span className="dyn-avatar" title="the viewer's own profile photo" />
                         </div>
-                        <button type="button" className="post-follow" disabled>
-                          + Follow
+                        <div className="dyn-head">
+                          {active.copy.headline || (
+                            <span className="ph">Alex, follow {brief.client || 'Client name'}</span>
+                          )}
+                        </div>
+                        {active.copy.description && (
+                          <div className="dyn-desc">{active.copy.description}</div>
+                        )}
+                        <button type="button" className="dyn-cta" disabled>
+                          Follow
                         </button>
                       </div>
-                      <p className="nopv-note">
-                        LinkedIn assembles this from the Company Page. There is no creative to
-                        preview because there is no creative to make.
+                      <p className="pv-note">
+                        The viewer's own photo sits beside the company logo and their first name
+                        appears in the copy. Nobody else sees their details. Existing followers get
+                        the alternative CTA instead of Follow.
                       </p>
                     </div>
                   )}
@@ -835,7 +917,9 @@ const CSS = `
   background:var(--carbon);color:var(--white);border:1px solid var(--carbon);}
 .btn:disabled{opacity:.45;cursor:default;}
 .cols{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:1fr .9fr;align-items:start;}
-.stack{display:block;padding-top:10px;}
+.stack{display:block;padding-top:12px;}
+.row-hint{display:block;font-size:10.5px;line-height:1.45;color:var(--ink-2);
+  margin:2px 0 5px;text-transform:none;letter-spacing:0;font-weight:400;}
 .row-label{font-family:'Archivo Narrow',sans-serif;font-weight:600;font-size:11px;
   letter-spacing:.09em;text-transform:uppercase;color:var(--ink-2);}
 .inp{font-family:'Courier Prime',monospace;font-size:13px;color:var(--carbon);
@@ -891,8 +975,20 @@ const CSS = `
   letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2);margin:8px 0 4px;}
 .genblock-list{margin:0;padding-left:16px;}
 .genblock-list li{font-size:12.5px;line-height:1.55;color:#4E4A33;margin-bottom:4px;}
-.nopv{padding-bottom:10px;}
-.nopv-note{margin:0;padding:0 12px;font-size:11.5px;line-height:1.5;color:#7A7A72;}
+.dyn{max-width:320px;}
+.dyn-badge{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:8.5px;
+  letter-spacing:.16em;text-transform:uppercase;color:#93803C;margin-bottom:6px;}
+.dyn-card{background:#fff;border:1px solid #E0DCC8;padding:16px 14px 14px;text-align:center;}
+.dyn-imgs{display:flex;align-items:center;justify-content:center;gap:-6px;margin-bottom:10px;}
+.dyn-logo{width:46px;height:46px;background:#E4E7F0;border:1px solid #D2D6E4;display:grid;
+  place-items:center;font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:19px;
+  color:#6B72A0;position:relative;z-index:2;}
+.dyn-avatar{width:46px;height:46px;border-radius:50%;background:#DCE0EC;
+  border:2px solid #fff;margin-left:-10px;position:relative;z-index:1;}
+.dyn-head{font-size:13px;font-weight:600;line-height:1.35;word-break:break-word;}
+.dyn-desc{font-size:11.5px;color:#5C5F57;line-height:1.45;margin-top:4px;word-break:break-word;}
+.dyn-cta{margin-top:11px;font-size:12px;font-weight:600;color:#fff;background:#0A66C2;
+  border:none;border-radius:15px;padding:6px 20px;}
 .fld{margin-bottom:14px;}
 .fld-top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px;}
 .fld-label{font-family:'Archivo Narrow',sans-serif;font-weight:600;font-size:11px;

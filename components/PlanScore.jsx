@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { hasObjective } from '@/lib/brief';
 
 /* ------------------------------------------------------------------ *
  * Best practice score, driven by sliders.
@@ -26,6 +27,11 @@ const BLANK = {
   campaignType: 'Fixed-term campaign',
   campaigns: 4,
   audienceSize: 120000,
+  jobTitles: '',
+  jobFunctions: '',
+  seniority: '',
+  companySize: '',
+  exclusions: '',
   variantsPerCampaign: 2,
   formFields: 4,
   targetLeads: 60,
@@ -268,7 +274,18 @@ function evaluate(a) {
 }
 
 const SLIDERS = [
-  { key: 'budget', label: 'Monthly budget', min: 500, max: 40000, step: 250, fmt: (v) => '£' + v.toLocaleString('en-GB') },
+  /* Daily is the number LinkedIn actually spends against and the one every
+   * floor in this tool is expressed in, so it leads. The monthly figure the
+   * client agreed sits beside it in small. */
+  {
+    key: 'budget',
+    label: 'Budget',
+    min: 500,
+    max: 40000,
+    step: 250,
+    fmt: (v) => `$${Math.round(v / 30.4).toLocaleString('en-GB')}/day`,
+    sub: (v) => `$${v.toLocaleString('en-GB')} per month`,
+  },
   {
     key: 'weeks', label: 'Duration', min: 1, max: 52, step: 1,
     fmt: (v) => (v < 9 ? `${v} week${v === 1 ? '' : 's'}` : `${v} weeks · ${(v / 4.33).toFixed(1)} months`),
@@ -279,7 +296,7 @@ const SLIDERS = [
   { key: 'variantsPerCampaign', label: 'Creative variants each', min: 1, max: 8, step: 1, fmt: (v) => String(v) },
   { key: 'formFields', label: 'Form fields', min: 1, max: 12, step: 1, fmt: (v) => String(v), hideWhen: (a) => a.capture === 'Landing page' },
   { key: 'targetLeads', label: 'Lead target / month', min: 0, max: 300, step: 5, fmt: (v) => String(v) },
-  { key: 'dealSize', label: 'Average deal size', min: 0, max: 120000, step: 1000, fmt: (v) => '£' + v.toLocaleString('en-GB') },
+  { key: 'dealSize', label: 'Average deal size', min: 0, max: 120000, step: 1000, fmt: (v) => '$' + v.toLocaleString('en-GB') },
 ];
 
 /**
@@ -321,7 +338,10 @@ function Slider({ def, value, zone, onChange }) {
     <div className="sl">
       <div className="sl-top">
         <span className="sl-label">{def.label}</span>
-        <span className={`sl-val${inZone ? ' good' : ''}`}>{def.fmt(value)}</span>
+        <span className={`sl-val${inZone ? ' good' : ''}`}>
+          {def.fmt(value)}
+          {def.sub && <em className="sl-sub">{def.sub(value)}</em>}
+        </span>
       </div>
       <div className="sl-track">
         {zone && zWidth > 0 && (
@@ -407,7 +427,7 @@ export default function PlanScore() {
           if (b.client) setLinked(b.client);
           if (b.budget && b.months) p.budget = Math.round(Number(b.budget) / Number(b.months) / 250) * 250;
           if (b.months) p.weeks = Math.min(52, Math.round(Number(b.months) * 4.33));
-          if (b.objective === 'Brand awareness') p.campaignType = 'Always-on programme';
+          if (hasObjective(b, 'Brand awareness')) p.campaignType = 'Always-on programme';
           if (b.assets?.includes('Webinar or event')) p.campaignType = 'Event or launch';
           if (b.campaignCount) p.campaigns = Math.min(20, Number(b.campaignCount));
           if (b.targetLeads) p.targetLeads = Math.round(Number(b.targetLeads) / 5) * 5;
@@ -506,6 +526,16 @@ export default function PlanScore() {
     const lines = [
       `CAMPAIGN PLAN SCORE${linked ? `: ${linked}` : ''}`,
       `${rounded}%, ${grade.g}`,
+      ...(() => {
+        const rows = [
+          ['Job titles', a.jobTitles],
+          ['Job functions', a.jobFunctions],
+          ['Seniority', a.seniority],
+          ['Company size', a.companySize],
+          ['Exclusions', a.exclusions],
+        ].filter(([, v]) => String(v || '').trim());
+        return rows.length ? ['', 'TARGETING', ...rows.map(([k, v]) => `  ${k}: ${v}`)] : [];
+      })(),
       '',
       'BIGGEST GAPS',
       ...deductions.slice(0, 6).map((d) => `  ${d.label} (−${d.lost.toFixed(0)})\n    ${d.why}`),
@@ -584,6 +614,34 @@ export default function PlanScore() {
                   onChange={set('exclusionsPlanned')} gain={toggleGains.exclusionsPlanned} />
                 <YesNo label="Account list used" value={a.accountList} onChange={set('accountList')}
                   extra="Not available" gain={toggleGains.accountList} />
+
+                {/* The targeting detail sits here rather than on the intake
+                  * form: it is worked out against the size slider above,
+                  * which is the thing that tells you whether it is buyable. */}
+                <div className="tgt">
+                  <div className="tgt-head">Targeting</div>
+                  {[
+                    ['jobTitles', 'Job titles', 'Head of CMC, QA Director, Clinical Supply Manager'],
+                    ['jobFunctions', 'Job functions', 'Research, Quality Assurance, Operations'],
+                    ['seniority', 'Seniority', 'Manager and above'],
+                    ['companySize', 'Company size', '201-1000, 1001-5000'],
+                    ['exclusions', 'Exclusions', 'Existing customers, competitors, own staff'],
+                  ].map(([key, label, placeholder]) => (
+                    <label className="tgt-row" key={key}>
+                      <span className="tgt-lab">{label}</span>
+                      <input
+                        className="tgt-inp"
+                        value={a[key] || ''}
+                        placeholder={placeholder}
+                        onChange={(e) => set(key)(e.target.value)}
+                      />
+                    </label>
+                  ))}
+                  <p className="tgt-note">
+                    Carried into the plan and the copied summary. The size slider above is what
+                    says whether this combination is actually buyable.
+                  </p>
+                </div>
               </div>
             </section>
 
@@ -725,6 +783,22 @@ const CSS = `
 .sl-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:6px;}
 .sl-label{font-family:'Archivo Narrow',sans-serif;font-weight:600;font-size:11px;
   letter-spacing:.09em;text-transform:uppercase;color:var(--ink-2);}
+.tgt{margin-top:11px;padding-top:10px;border-top:1px solid var(--rule);}
+.tgt-head{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:9.5px;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--carbon);margin-bottom:7px;}
+.tgt-row{display:grid;grid-template-columns:104px 1fr;align-items:center;gap:9px;
+  padding:4px 0;border-bottom:1px dotted var(--rule);}
+.tgt-lab{font-family:'Archivo Narrow',sans-serif;font-weight:600;font-size:10.5px;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);}
+.tgt-inp{font-family:'Courier Prime',monospace;font-size:12px;color:var(--carbon);
+  background:transparent;border:none;border-bottom:1px solid transparent;
+  padding:3px 0;outline:none;width:100%;min-width:0;}
+.tgt-inp:focus{border-bottom-color:var(--carbon);background:#F6F5FB;}
+.tgt-inp::placeholder{color:#B6B4A9;}
+.tgt-note{margin:8px 0 0;font-size:10px;line-height:1.5;color:var(--ink-2);}
+@media (max-width:700px){.tgt-row{grid-template-columns:1fr;gap:2px;}}
+.sl-sub{display:block;font-style:normal;font-family:'Courier Prime',monospace;
+  font-size:10px;font-weight:400;color:var(--ink-2);text-align:right;margin-top:1px;}
 .sl-val{font-family:'Courier Prime',monospace;font-weight:700;font-size:15px;color:var(--ink-2);}
 .sl-val.good{color:var(--ok);}
 .sl-track{position:relative;height:22px;display:flex;align-items:center;}
