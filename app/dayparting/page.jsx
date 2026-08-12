@@ -90,17 +90,16 @@ export default function DaypartingPage() {
           <div className="mast-eyebrow">LinkedIn Ads · Whitehart</div>
           <h1 className="mast-title">Dayparting</h1>
           <div className="linked">
-            LinkedIn has no native delivery scheduling — this runs every 15 minutes via cron
+            LinkedIn has no native delivery scheduling, so this runs every 15 minutes via cron
           </div>
         </div>
-        <dl className="mast-meta"><dt>Form</dt><dd>LA-11</dd></dl>
       </header>
 
       {apiError && (
         <div className="dp-alert">
           <strong>Not connected.</strong> {apiError}
           <div className="dp-alert-sub">
-            You can still build a schedule below and commit it — the cron job will pick it up
+            You can still build a schedule below and commit it. The cron job will pick it up
             once credentials are in place.
           </div>
         </div>
@@ -137,7 +136,7 @@ export default function DaypartingPage() {
                     {accounts ? (
                       <select value={rule.accountId}
                         onChange={(e) => { setRule(rule.id, { accountId: e.target.value, campaignIds: [] }); loadCampaigns(e.target.value); }}>
-                        <option value="">—</option>
+                        <option value="">Choose an account</option>
                         {accounts.map((a) => (
                           <option key={a.id} value={a.id}>{a.name} ({a.id})</option>
                         ))}
@@ -180,7 +179,7 @@ export default function DaypartingPage() {
                     </div>
                   ) : (
                     <input value={rule.campaignIds.join(', ')}
-                      placeholder="987654321, 987654322 — comma separated"
+                      placeholder="987654321, 987654322, comma separated"
                       onChange={(e) => setRule(rule.id, {
                         campaignIds: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
                       })} />
@@ -254,7 +253,7 @@ export default function DaypartingPage() {
                 onClick={() => navigator.clipboard?.writeText(configJson)}>Copy JSON</button>
             </div>
             <p className="dp-note">
-              The cron job reads a committed file, not this browser — so schedules stay
+              The cron job reads a committed file rather than this browser, so schedules stay
               version-controlled and survive a cleared cache. Paste this into{' '}
               <code>config/schedules.json</code> and deploy.
             </p>
@@ -277,6 +276,7 @@ const CSS = `
   border-right:1px solid var(--ink);border-bottom:1px solid var(--rule-2);padding:11px 22px;
   font-size:13px;color:#7A3B22;}
 .dp-alert-sub{font-size:12px;margin-top:4px;color:#8A5A3A;}
+.masthead{max-width:1180px;}
 .dp-body{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:1fr .68fr;
   align-items:start;border:1px solid var(--ink);background:var(--white);}
 .dp-side{background:var(--canary);border-left:1px solid var(--ink);align-self:stretch;}

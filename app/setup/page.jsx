@@ -14,7 +14,7 @@ const STEPS = [
   {
     id: 'app',
     title: 'Register the LinkedIn developer app',
-    wait: 'Approval takes weeks — start here',
+    wait: 'Approval takes weeks, so start here',
     body: 'Create an app at developer.linkedin.com against the Whitehart Company Page, then request the Advertising API product. Development tier is enough: write access for up to five ad accounts, unlimited reads.',
     manual: true,
     detail: [
@@ -42,7 +42,7 @@ const STEPS = [
           : !s.linkedin.clientId
             ? 'No client ID set'
             : !s.linkedin.refreshToken
-              ? 'Credentials set — visit /api/linkedin/connect to finish'
+              ? 'Credentials set. Visit /api/linkedin/connect to finish'
               : null,
     }),
   },
@@ -59,7 +59,7 @@ const STEPS = [
           ? s.google.error
           : !s.google.credentials
             ? 'No service account key set'
-            : 'Key set — add spreadsheetId to config/clients.json',
+            : 'Key set. Add spreadsheetId to config/clients.json',
       extra: s.google.serviceAccount
         ? `Share the sheet with: ${s.google.serviceAccount}`
         : null,
@@ -92,7 +92,7 @@ const STEPS = [
     check: (s) => ({
       done: s.delivery.cronSecret,
       note: s.delivery.cronSecret
-        ? s.delivery.siteUrl ? 'Set' : 'Set — SITE_URL still missing'
+        ? s.delivery.siteUrl ? 'Set' : 'Set, but SITE_URL is still missing'
         : 'Not set. The endpoints are open to anyone who finds the URL.',
     }),
   },
@@ -103,7 +103,7 @@ const STEPS = [
     check: (s) => ({
       done: s.config.budgets > 0,
       optional: true,
-      note: s.config.budgets ? `${s.config.budgets} configured` : 'None set — pacing checks will be skipped',
+      note: s.config.budgets ? `${s.config.budgets} configured` : 'None set, so pacing checks will be skipped',
     }),
   },
   {
@@ -119,7 +119,7 @@ const STEPS = [
   {
     id: 'airtable',
     title: 'Finish the Airtable bases',
-    body: 'Add three link fields by hand — QA Checks to Launches, QA Checks to QA Template, Creatives to Briefs. Then one automation on Launches: when a record is created, create a QA Check for every Template record.',
+    body: 'Add three link fields by hand: QA Checks to Launches, QA Checks to QA Template, Creatives to Briefs. Then one automation on Launches: when a record is created, create a QA Check for every Template record.',
     manual: true,
   },
 ];
@@ -142,7 +142,11 @@ export default function SetupPage() {
 
   useEffect(() => { load(); }, []);
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  /* Read after mount rather than during render. Reading it inline made the
+   * server emit the placeholder and the client the real address, which is a
+   * hydration text mismatch (React #418). */
+  const [origin, setOrigin] = useState('');
+  useEffect(() => { setOrigin(window.location.origin); }, []);
 
   const resolved = STEPS.map((s) => {
     if (s.manual || !status) return { ...s, state: s.manual ? 'manual' : 'unknown' };
@@ -177,8 +181,8 @@ export default function SetupPage() {
       <div className="su-body">
         <p className="su-intro">
           Ordered by dependency, not effort. The first step has a multi-week approval, so it goes
-          first and everything else happens while it is pending. Twelve of the sixteen tools work
-          before any of this is done.
+          first and everything else happens while it is pending. The planning and delivery tools
+          all work before any of this is done.
         </p>
 
         {resolved.map((s, i) => (
@@ -192,7 +196,7 @@ export default function SetupPage() {
                     : s.state === 'partial' ? 'Half done'
                     : s.state === 'manual' ? 'Do by hand'
                     : s.state === 'optional' ? 'Optional'
-                    : s.state === 'unknown' ? '—' : 'To do'}
+                    : s.state === 'unknown' ? 'Unknown' : 'To do'}
                 </span>
               </div>
               <p className="su-body-text">{s.body}</p>
@@ -215,11 +219,11 @@ export default function SetupPage() {
         <div className="su-foot">
           <div className="su-foot-head">Check as you go</div>
           <ul>
-            <li><code>/api/linkedin/connect</code> — obtain the refresh token, once</li>
-            <li><code>/api/google/check</code> — confirms Sheets access, lists visible tabs</li>
-            <li><code>/api/cron/sync-sheets?dry=1</code> — counts rows without writing</li>
-            <li><code>/api/cron/dayparting?dry=1</code> — previews schedule changes, sends nothing</li>
-            <li><code>/api/cron/morning-brief?preview=1</code> — renders the real email in the browser</li>
+            <li><code>/api/linkedin/connect</code>, obtains the refresh token, once</li>
+            <li><code>/api/google/check</code>, confirms Sheets access and lists visible tabs</li>
+            <li><code>/api/cron/sync-sheets?dry=1</code>, counts rows without writing</li>
+            <li><code>/api/cron/dayparting?dry=1</code>, previews schedule changes and sends nothing</li>
+            <li><code>/api/cron/morning-brief?preview=1</code>, renders the real email in the browser</li>
           </ul>
           <p className="su-foot-note">
             Every one of these is safe to run. Nothing in this list changes a campaign or sends
@@ -236,6 +240,7 @@ export default function SetupPage() {
 const CSS = `
 .su-alert{max-width:900px;margin:0 auto;background:#F9EDE9;border-left:1px solid var(--ink);
   border-right:1px solid var(--ink);padding:11px 22px;font-size:13px;color:#7A3B22;}
+.masthead{max-width:900px;}
 .su-body{max-width:900px;margin:0 auto;background:var(--white);border:1px solid var(--ink);
   border-top:none;padding:0 0 4px 0;}
 .su-intro{margin:0;padding:14px 22px 16px;font-size:12.5px;line-height:1.6;color:var(--ink-2);

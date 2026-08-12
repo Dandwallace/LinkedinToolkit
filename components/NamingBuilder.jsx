@@ -9,15 +9,73 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 const TOKENS = [
   { key: 'client', label: 'Client', from: 'value' },
   { key: 'market', label: 'Market', from: 'value' },
-  { key: 'stage', label: 'Stage', from: 'campaign' },
   { key: 'objective', label: 'Objective', from: 'campaign' },
   { key: 'audience', label: 'Audience', from: 'campaign' },
   { key: 'format', label: 'Format', from: 'campaign' },
-  { key: 'period', label: 'Period', from: 'value' },
+  { key: 'variant', label: 'Variant', from: 'campaign' },
+  /* Rendered from the date range and never cleaned, so the slashes survive
+   * into the name. Its shape differs per level, set in periodFor below. */
+  { key: 'period', label: 'Period', from: 'period', raw: true },
 ];
 
-const STAGES = ['Awareness', 'Consideration', 'Conversion'];
+/* ------------------------------------------------------------------ *
+ * The three rungs of the account.
+ *
+ * LinkedIn renamed these: the group is now called Campaign and what used
+ * to be the campaign is the Ad Set. One flat pattern cannot describe all
+ * three, because each rung is distinguished by different tokens. The group
+ * is one per objective, so a format token there would be meaningless; the
+ * ad is one per creative, so it needs one.
+ * ------------------------------------------------------------------ */
+const LEVELS = [
+  {
+    key: 'campaign',
+    label: 'Campaign',
+    aka: 'the group. LinkedIn used to call this the Campaign Group',
+    defaults: { client: true, market: true, objective: true, audience: false, format: false, variant: false, period: true },
+    note: 'One per objective. Everything below inherits its budget and schedule.',
+  },
+  {
+    key: 'adset',
+    label: 'Campaign Ad Set',
+    aka: 'what LinkedIn used to call the Campaign, and what actually spends',
+    defaults: { client: false, market: true, objective: false, audience: true, format: true, variant: false, period: true },
+    note: 'One per audience. This is the rung you will filter reporting by.',
+  },
+  {
+    key: 'ad',
+    label: 'Ads',
+    aka: 'the individual creatives inside an ad set',
+    defaults: { client: false, market: false, objective: false, audience: false, format: true, variant: true, period: false },
+    note: 'One per creative. Keep it short, it sits inside an already long path.',
+  },
+];
+
 const OBJECTIVES = ['Brand', 'Traffic', 'Engagement', 'VideoViews', 'LeadGen', 'Conversions'];
+
+/* Maps the wording the intake form uses onto the short token used in names. */
+const OBJECTIVE_FROM_BRIEF = {
+  'Brand awareness': 'Brand',
+  'Website traffic': 'Traffic',
+  Engagement: 'Engagement',
+  'Video views': 'VideoViews',
+  'Lead generation': 'LeadGen',
+  'Website conversions': 'Conversions',
+};
+
+const FORMAT_FROM_BRIEF = {
+  'Single image': 'SingleImage',
+  Carousel: 'Carousel',
+  Video: 'Video',
+  Document: 'Document',
+  'Thought leader': 'ThoughtLeader',
+  'Follower ad': 'FollowerAd',
+  Spotlight: 'Spotlight',
+  'Text ad': 'TextAd',
+  'Message ad': 'Message',
+  'Conversation ad': 'Conversation',
+  'Event ad': 'Event',
+};
 const AUDIENCES = [
   'ICP-Cold',
   'ICP-Warm',
@@ -30,6 +88,7 @@ const AUDIENCES = [
 ];
 const FORMATS = [
   'SingleImage',
+  'FollowerAd',
   'Carousel',
   'Video',
   'Document',
@@ -47,9 +106,9 @@ let uid = 0;
 const nextId = () => `r${++uid}`;
 
 const STARTER = [
-  { stage: 'Awareness', objective: 'Brand', audience: 'ICP-Cold', format: 'ThoughtLeader', variant: 'v1' },
-  { stage: 'Consideration', objective: 'Engagement', audience: 'Retarget-Video', format: 'Document', variant: 'v1' },
-  { stage: 'Conversion', objective: 'LeadGen', audience: 'Retarget-Site', format: 'SingleImage', variant: 'v1' },
+  { objective: 'Brand', audience: 'ICP-Cold', format: 'ThoughtLeader', variant: 'v1' },
+  { objective: 'Engagement', audience: 'Retarget-Video', format: 'Document', variant: 'v1' },
+  { objective: 'LeadGen', audience: 'Retarget-Site', format: 'SingleImage', variant: 'v1' },
 ];
 
 /* ------------------------------------------------------------------ *
@@ -75,10 +134,30 @@ function applyCase(s, mode) {
     .join('');
 }
 
-function buildName(tokens, sep, mode, values, row) {
+/**
+ * The period token, shaped for the level it sits on.
+ *
+ * A campaign spans the whole flight, so month and year is the useful
+ * granularity. An ad set is often a burst inside that flight, where the day
+ * matters and the year is already implied by the campaign above it.
+ */
+export function periodFor(level, dates) {
+  const { start, end } = dates || {};
+  if (!start || !end) return '';
+  const [sy, sm, sd] = start.split('-');
+  const [ey, em, ed] = end.split('-');
+  if (level === 'campaign') return `${sm}/${sy}-${em}/${ey}`;
+  return `${sd}/${sm}-${ed}/${em}`;
+}
+
+function buildName(tokens, sep, mode, values, row, level, dates) {
   const parts = TOKENS.filter((t) => tokens[t.key])
-    .map((t) => (t.from === 'value' ? values[t.key] : row[t.key]))
-    .map(clean)
+    .map((t) => {
+      if (t.from === 'period') return periodFor(level, dates);
+      return t.from === 'value' ? values[t.key] : row[t.key];
+    })
+    /* The period keeps its slashes; everything else is scrubbed. */
+    .map((v, i) => (TOKENS.filter((t) => tokens[t.key])[i]?.raw ? String(v || '') : clean(v)))
     .filter(Boolean);
   return applyCase(parts.join(sep), mode);
 }
@@ -134,38 +213,67 @@ function Pick({ value, onChange, options, w }) {
 /* ------------------------------------------------------------------ */
 
 export default function NamingBuilder() {
-  const [tokens, setTokens] = useState({
-    client: true,
-    market: true,
-    stage: true,
-    objective: true,
-    audience: true,
-    format: true,
-    period: true,
-  });
+  const [levelTokens, setLevelTokens] = useState(() =>
+    Object.fromEntries(LEVELS.map((l) => [l.key, { ...l.defaults }]))
+  );
+  const [activeLevel, setActiveLevel] = useState('campaign');
   const [sepName, setSepName] = useState('Underscore');
   const [caseMode, setCaseMode] = useState('lower');
-  const [values, setValues] = useState({ client: '', market: 'UK', period: 'Q3-2026' });
+  const [values, setValues] = useState({ client: '', market: 'EMEA' });
+  const [dates, setDates] = useState({ start: '', end: '' });
   const [utm, setUtm] = useState({ source: 'linkedin', medium: 'paid-social', landing: '' });
   const [rows, setRows] = useState(() => STARTER.map((r) => ({ id: nextId(), ...r })));
   const [linked, setLinked] = useState(null);
   const [copied, setCopied] = useState('');
   const loaded = useRef(false);
 
+  /* Seeded from the intake brief: client, region, flight dates, the
+   * objective, and one row per creative format chosen there, so the naming
+   * sheet starts from the plan rather than from the starter rows. */
   useEffect(() => {
     (async () => {
       try {
         const r = await window.storage.get('brief:current');
-        if (r?.value) {
-          const b = JSON.parse(r.value);
-          const patch = {};
-          if (b.client) patch.client = b.client;
-          if (b.markets) patch.market = b.markets.split(',')[0].trim();
-          if (Object.keys(patch).length) {
-            setValues((p) => ({ ...p, ...patch }));
-            setLinked(b.client || 'saved brief');
-          }
-          if (b.website) setUtm((p) => ({ ...p, landing: b.website }));
+        if (!r?.value) return;
+        const b = JSON.parse(r.value);
+
+        const patch = {};
+        if (b.client) patch.client = b.client;
+        if (b.markets) patch.market = b.markets.split(',')[0].trim();
+        if (Object.keys(patch).length) {
+          setValues((p) => ({ ...p, ...patch }));
+          setLinked(b.client || 'saved brief');
+        }
+        if (b.website) setUtm((p) => ({ ...p, landing: b.website }));
+
+        if (b.startDate) {
+          const months = Number(b.months) || 0;
+          const start = new Date(`${b.startDate}T00:00:00Z`);
+          const end = new Date(start);
+          if (months) end.setUTCMonth(end.getUTCMonth() + months);
+          setDates({
+            start: b.startDate,
+            end: months ? end.toISOString().slice(0, 10) : '',
+          });
+        }
+
+        const objective = OBJECTIVE_FROM_BRIEF[b.objective];
+        const picks = (b.creatives || [])
+          .map((c) => FORMAT_FROM_BRIEF[c.format])
+          .filter(Boolean);
+
+        if (picks.length) {
+          setRows(
+            picks.map((format, i) => ({
+              id: nextId(),
+              objective: objective || 'Brand',
+              audience: i === 0 ? 'ICP-Cold' : 'Retarget-Site',
+              format,
+              variant: 'v1',
+            }))
+          );
+        } else if (objective) {
+          setRows((p) => p.map((r) => ({ ...r, objective })));
         }
       } catch {
         /* no brief yet */
@@ -179,40 +287,70 @@ export default function NamingBuilder() {
   const built = useMemo(
     () =>
       rows.map((r) => {
-        const name = buildName(tokens, sep, caseMode, values, r);
+        const names = Object.fromEntries(
+          LEVELS.map((l) => [l.key, buildName(levelTokens[l.key], sep, caseMode, values, r, l.key, dates)])
+        );
+        /* The tagged URL keys off the ad set: that is the rung whose name
+         * carries the audience, and the one reporting is grouped by. */
         const slug = applyCase(
-          TOKENS.filter((t) => tokens[t.key])
+          TOKENS.filter((t) => levelTokens.adset[t.key])
             .map((t) => (t.from === 'value' ? values[t.key] : r[t.key]))
             .map(clean)
             .filter(Boolean)
             .join('-'),
           'lower'
         );
-        return { ...r, name, slug, url: buildUrl(utm.landing, utm, slug, r) };
+        return { ...r, names, slug, url: buildUrl(utm.landing, utm, slug, r) };
       }),
-    [rows, tokens, sep, caseMode, values, utm]
+    [rows, levelTokens, sep, caseMode, values, utm, dates]
   );
 
-  const pattern = useMemo(() => {
-    const parts = TOKENS.filter((t) => tokens[t.key]).map((t) => `{${t.label.toLowerCase()}}`);
-    return parts.length ? applyCase(parts.join(sep), caseMode === 'title' ? 'title' : caseMode) : '—';
-  }, [tokens, sep, caseMode]);
+  const patterns = useMemo(
+    () =>
+      Object.fromEntries(
+        LEVELS.map((l) => {
+          const parts = TOKENS.filter((t) => levelTokens[l.key][t.key]).map((t) =>
+            t.from === 'period'
+              ? l.key === 'campaign'
+                ? 'mm/yyyy-mm/yyyy'
+                : 'dd/mm-dd/mm'
+              : `{${t.label.toLowerCase()}}`
+          );
+          return [
+            l.key,
+            parts.length ? applyCase(parts.join(sep), caseMode) : 'nothing selected',
+          ];
+        })
+      ),
+    [levelTokens, sep, caseMode]
+  );
+
+  const periodSet = Boolean(dates.start && dates.end);
 
   const issues = useMemo(() => {
     const out = [];
+    /* Duplicates only matter within a rung. Two ad sets under different
+     * campaigns may legitimately share a name; two under the same one
+     * cannot be told apart in reporting. */
     const seen = new Map();
     for (const b of built) {
-      seen.set(b.name, (seen.get(b.name) || 0) + 1);
+      const k = `${b.names.campaign}|${b.names.adset}`;
+      seen.set(k, (seen.get(k) || 0) + 1);
     }
     const dupes = [...seen.entries()].filter(([, n]) => n > 1);
     if (dupes.length) {
       out.push({
         level: 'blocker',
-        text: `${dupes.length} duplicate name${dupes.length === 1 ? '' : 's'}. Two campaigns sharing a name makes reporting impossible to split — add the audience or format token, or vary the variant.`,
+        text: `${dupes.length} duplicate ad set name${dupes.length === 1 ? '' : 's'} within the same campaign. Two ad sets sharing a name makes reporting impossible to split. Add the audience or format token, or vary the variant.`,
       });
     }
-    if (!Object.values(tokens).some(Boolean)) {
-      out.push({ level: 'blocker', text: 'No tokens selected. Turn at least stage and audience on.' });
+    for (const l of LEVELS) {
+      if (!Object.values(levelTokens[l.key]).some(Boolean)) {
+        out.push({
+          level: 'blocker',
+          text: `${l.label} has no tokens selected, so it generates an empty name.`,
+        });
+      }
     }
     if (!values.client) {
       out.push({
@@ -220,16 +358,22 @@ export default function NamingBuilder() {
         text: 'No client name set. Without it, names collide the moment you run a second account.',
       });
     }
-    if (!tokens.audience) {
+    if (!levelTokens.adset.audience) {
       out.push({
         level: 'action',
-        text: 'Audience is off. It is the field you will most often want to filter reporting by — worth keeping.',
+        text: 'Audience is off at ad set level. It is the field you will most often want to filter reporting by, so it is worth keeping.',
       });
     }
-    if (!tokens.period) {
+    if (levelTokens.campaign.period && !periodSet) {
+      out.push({
+        level: 'action',
+        text: 'Period is switched on but no flight dates are set, so it drops out of every name. Set the start and end dates.',
+      });
+    }
+    if (!levelTokens.campaign.period) {
       out.push({
         level: 'note',
-        text: 'No period token. Campaign names will collide across quarters when you re-run the same structure.',
+        text: 'No period token on the campaign. Names will collide across quarters when you re-run the same structure.',
       });
     }
     if (utm.landing && !built.some((b) => b.url)) {
@@ -244,18 +388,18 @@ export default function NamingBuilder() {
     if (caseMode !== 'lower') {
       out.push({
         level: 'note',
-        text: 'UTMs are lowercased automatically regardless of the campaign name casing — GA4 treats differing cases as separate sources.',
+        text: 'UTMs are lowercased automatically regardless of the campaign name casing, because GA4 treats differing cases as separate sources.',
       });
     }
     return out;
-  }, [built, tokens, values, utm, caseMode]);
+  }, [built, levelTokens, values, utm, caseMode, periodSet]);
 
   const setRow = (id, patch) =>
     setRows((p) => p.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const addRow = () =>
     setRows((p) => [
       ...p,
-      { id: nextId(), stage: 'Conversion', objective: 'LeadGen', audience: 'ICP-Cold', format: 'SingleImage', variant: 'v1' },
+      { id: nextId(), objective: 'LeadGen', audience: 'ICP-Cold', format: 'SingleImage', variant: 'v1' },
     ]);
   const delRow = (id) => setRows((p) => p.filter((r) => r.id !== id));
 
@@ -267,7 +411,10 @@ export default function NamingBuilder() {
 
   const copyTable = () =>
     copy(
-      ['Campaign name\tLanding URL', ...built.map((b) => `${b.name}\t${b.url}`)].join('\n'),
+      [
+        'Campaign\tCampaign Ad Set\tAd\tLanding URL',
+        ...built.map((b) => `${b.names.campaign}\t${b.names.adset}\t${b.names.ad}\t${b.url}`),
+      ].join('\n'),
       'table'
     );
 
@@ -279,13 +426,12 @@ export default function NamingBuilder() {
           <div>
             <div className="mast-eyebrow">LinkedIn Ads · Whitehart</div>
             <h1 className="mast-title">Naming &amp; tracking</h1>
-            {linked && <div className="linked">Prefilled from {linked}</div>}
+            <div className="linked">
+              Campaign, ad set and ad, each with its own pattern
+              {linked && ` · prefilled from ${linked}`}
+            </div>
           </div>
           <dl className="mast-meta">
-            <div>
-              <dt>Form</dt>
-              <dd>LA-04</dd>
-            </div>
             <div>
               <dt>Rows</dt>
               <dd>{built.length}</dd>
@@ -299,26 +445,49 @@ export default function NamingBuilder() {
             <section className="grp">
               <h2 className="grp-head">
                 <span className="grp-letter">A</span>
-                Pattern
+                Patterns
               </h2>
               <div className="grp-body">
-                <div className="plate">
-                  <span className="plate-lab">Plate</span>
-                  <code className="plate-code">{pattern}</code>
-                </div>
-                <div className="toks">
-                  {TOKENS.map((t) => (
+                <div className="lvltabs">
+                  {LEVELS.map((l) => (
                     <button
-                      key={t.key}
+                      key={l.key}
                       type="button"
-                      className={tokens[t.key] ? 'tok on' : 'tok'}
-                      onClick={() => setTokens((p) => ({ ...p, [t.key]: !p[t.key] }))}
+                      className={activeLevel === l.key ? 'lvltab on' : 'lvltab'}
+                      onClick={() => setActiveLevel(l.key)}
                     >
-                      <span className="tok-box">{tokens[t.key] ? '×' : ''}</span>
-                      {t.label}
+                      {l.label}
                     </button>
                   ))}
                 </div>
+                {LEVELS.filter((l) => l.key === activeLevel).map((l) => (
+                  <div key={l.key}>
+                    <p className="lvl-aka">{l.aka}</p>
+                    <div className="plate">
+                      <span className="plate-lab">{l.label} pattern</span>
+                      <code className="plate-code">{patterns[l.key]}</code>
+                    </div>
+                    <div className="toks">
+                      {TOKENS.map((t) => (
+                        <button
+                          key={t.key}
+                          type="button"
+                          className={levelTokens[l.key][t.key] ? 'tok on' : 'tok'}
+                          onClick={() =>
+                            setLevelTokens((p) => ({
+                              ...p,
+                              [l.key]: { ...p[l.key], [t.key]: !p[l.key][t.key] },
+                            }))
+                          }
+                        >
+                          <span className="tok-box">{levelTokens[l.key][t.key] ? '×' : ''}</span>
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="lvl-note">{l.note}</p>
+                  </div>
+                ))}
                 <Row label="Separator">
                   <Pick value={sepName} onChange={setSepName} options={Object.keys(SEPARATORS)} />
                 </Row>
@@ -354,14 +523,27 @@ export default function NamingBuilder() {
                     onChange={(e) => setValues((p) => ({ ...p, market: e.target.value }))}
                   />
                 </Row>
-                <Row label="Period">
+                <Row label="Flight starts">
                   <input
                     className="inp"
-                    value={values.period}
-                    placeholder="Q3-2026"
-                    onChange={(e) => setValues((p) => ({ ...p, period: e.target.value }))}
+                    type="date"
+                    value={dates.start}
+                    onChange={(e) => setDates((p) => ({ ...p, start: e.target.value }))}
                   />
                 </Row>
+                <Row label="Flight ends">
+                  <input
+                    className="inp"
+                    type="date"
+                    value={dates.end}
+                    onChange={(e) => setDates((p) => ({ ...p, end: e.target.value }))}
+                  />
+                </Row>
+                <p className="fixed-note">
+                  Campaign names carry the period as {periodFor('campaign', dates) || 'mm/yyyy-mm/yyyy'},
+                  ad sets as {periodFor('adset', dates) || 'dd/mm-dd/mm'}. The year is implied at ad
+                  set level by the campaign above it.
+                </p>
               </div>
             </section>
 
@@ -386,7 +568,7 @@ export default function NamingBuilder() {
                     onChange={(e) => setUtm((p) => ({ ...p, source: e.target.value }))}
                   />
                 </Row>
-                <Row label="utm_medium" hint="paid-social or cpc — pick one and never change it">
+                <Row label="utm_medium" hint="paid-social or cpc, pick one and never change it">
                   <input
                     className="inp"
                     value={utm.medium}
@@ -418,7 +600,6 @@ export default function NamingBuilder() {
               {built.map((b) => (
                 <article className="card" key={b.id}>
                   <div className="card-picks">
-                    <Pick value={b.stage} onChange={(v) => setRow(b.id, { stage: v })} options={STAGES} />
                     <Pick
                       value={b.objective}
                       onChange={(v) => setRow(b.id, { objective: v })}
@@ -446,13 +627,19 @@ export default function NamingBuilder() {
                     </button>
                   </div>
 
-                  <div className="outline">
-                    <span className="outline-lab">Campaign name</span>
-                    <code className="outline-val">{b.name || '—'}</code>
-                    <button type="button" className="mini" onClick={() => copy(b.name, b.id + 'n')}>
-                      {copied === b.id + 'n' ? '✓' : 'Copy'}
-                    </button>
-                  </div>
+                  {LEVELS.map((l) => (
+                    <div className={`outline lv-${l.key}`} key={l.key}>
+                      <span className="outline-lab">{l.label}</span>
+                      <code className="outline-val">{b.names[l.key] || 'no tokens'}</code>
+                      <button
+                        type="button"
+                        className="mini"
+                        onClick={() => copy(b.names[l.key], b.id + l.key)}
+                      >
+                        {copied === b.id + l.key ? '✓' : 'Copy'}
+                      </button>
+                    </div>
+                  ))}
 
                   {b.url && (
                     <div className="outline url">
@@ -475,8 +662,8 @@ export default function NamingBuilder() {
                 {copied === 'table' ? 'Copied' : 'Copy all as table'}
               </button>
               <span className="foot-note">
-                Pastes into Sheets as two columns. Same names must be used in Campaign Manager or
-                reporting will not join up.
+                Pastes into Sheets as four columns, one per level plus the tagged URL. The same
+                names must be used in Campaign Manager or reporting will not join up.
               </span>
             </div>
           </div>
@@ -487,6 +674,7 @@ export default function NamingBuilder() {
 }
 
 const CSS = `
+.masthead{max-width:1240px;margin:0 auto;}
 .cols{max-width:1240px;margin:0 auto;display:grid;grid-template-columns:.76fr 1fr;align-items:start;}
 .row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px;
   padding:8px 0;border-bottom:1px dotted var(--rule);}
@@ -496,6 +684,19 @@ const CSS = `
   background:transparent;border:none;border-bottom:1px solid var(--rule);
   padding:2px 0 3px;border-radius:0;outline:none;width:150px;text-align:right;}
 .sel{cursor:pointer;text-align:left;width:auto;}
+.lvltabs{display:flex;gap:1px;background:var(--rule);border:1px solid var(--rule);margin:8px 0 0;}
+.lvltab{flex:1;font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:9.5px;
+  letter-spacing:.1em;text-transform:uppercase;padding:7px 6px;background:var(--white);
+  color:var(--ink-2);border:none;cursor:pointer;white-space:nowrap;}
+.lvltab:hover{background:#F1F0EA;color:var(--ink);}
+.lvltab.on{background:var(--carbon);color:var(--white);}
+.lvltab:focus-visible{outline:2px solid var(--carbon);outline-offset:-2px;}
+.lvl-aka{margin:8px 0 0;font-size:10.5px;line-height:1.45;color:var(--ink-2);}
+.lvl-note{margin:0 0 4px;font-size:10.5px;line-height:1.45;color:var(--carbon);}
+.outline.lv-campaign .outline-lab{color:var(--carbon);}
+.outline.lv-adset{border-top:1px dotted var(--rule-2);}
+.outline.lv-ad{border-top:1px dotted var(--rule-2);}
+.outline.lv-ad .outline-val{font-size:12px;color:var(--ink-2);}
 .plate{background:#EFEEE7;border:1px solid var(--rule);padding:9px 11px;margin:8px 0 10px;}
 .plate-lab{display:block;font-family:'Archivo Narrow',sans-serif;font-weight:700;
   font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-2);margin-bottom:4px;}

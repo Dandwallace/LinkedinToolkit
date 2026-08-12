@@ -45,7 +45,7 @@ export async function GET(request) {
   if (!code) return page('<p>No authorisation code in the callback.</p>', true);
   if (!expected || state !== expected) {
     return page(
-      '<p>State mismatch — possible CSRF. Start again from <code>/api/linkedin/connect</code>.</p>',
+      '<p>State mismatch, possibly CSRF. Start again from <code>/api/linkedin/connect</code>.</p>',
       true
     );
   }
@@ -63,8 +63,8 @@ export async function GET(request) {
     return page(
       `<p>Add this to your environment as <code>LINKEDIN_REFRESH_TOKEN</code>, then redeploy.</p>
        <textarea readonly onclick="this.select()">${escapeHtml(tokens.refresh_token)}</textarea>
-       <p class="note">Shown once and stored nowhere. Treat it like a password —
-       it grants write access to the ad account.</p>`
+       <p class="note">Shown once and stored nowhere. Treat it like a password,
+       because it grants write access to the ad account.</p>`
     );
   } catch (err) {
     return page(`<p>${escapeHtml(err.message)}</p>`, true);

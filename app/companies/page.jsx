@@ -106,7 +106,6 @@ export default function CompaniesPage() {
           <h1 className="mast-title">Company engagement</h1>
           <div className="linked">Which companies actually saw and clicked the ads</div>
         </div>
-        <dl className="mast-meta"><dt>Form</dt><dd>LA-14</dd></dl>
       </header>
 
       {apiError && (
@@ -118,7 +117,7 @@ export default function CompaniesPage() {
           <span>Ad account</span>
           {accounts ? (
             <select value={account} onChange={(e) => setAccount(e.target.value)}>
-              <option value="">—</option>
+              <option value="">Choose an account</option>
               {accounts.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.id})</option>)}
             </select>
           ) : (
@@ -157,7 +156,7 @@ export default function CompaniesPage() {
 
       <div className="co-target">
         <label>
-          <span>Target account list — one company per line, to check the list is working</span>
+          <span>Target account list, one company per line, to check the list is working</span>
           <textarea rows={2} value={targetList} placeholder="Acme Manufacturing&#10;Beta Corp"
             onChange={(e) => setTargetList(e.target.value)} />
         </label>
@@ -199,7 +198,7 @@ export default function CompaniesPage() {
                 {totals.onListCount} of {totals.companies} companies matched your target list,
                 taking {money(totals.onListSpend)} of {money(totals.spend)}.
                 {totals.offListSpend > totals.onListSpend
-                  ? ' More spend is going to companies off the list than on it — check Audience Expansion is off and the company list is actually applied.'
+                  ? ' More spend is going to companies off the list than on it. Check Audience Expansion is off and the company list is actually applied.'
                   : ' The list is doing its job.'}
               </p>
             )}
@@ -226,7 +225,7 @@ export default function CompaniesPage() {
                     <td>{num(r.clicks)}</td>
                     <td>{r.ctr.toFixed(2)}%</td>
                     <td>{money(r.spend, 2)}</td>
-                    <td>{r.leads || '—'}</td>
+                    <td>{r.leads || 'none'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -235,7 +234,7 @@ export default function CompaniesPage() {
               <p className="co-note">Showing the top 150 of {rows.length}. Export the CSV for all of them.</p>
             )}
             <p className="co-note">
-              These figures are approximate by design — LinkedIn blurs demographic reporting to
+              These figures are approximate by design, because LinkedIn blurs demographic reporting to
               protect member privacy. Companies with fewer than three events are dropped entirely,
               only the top 100 values per creative per day are returned, and results can include
               companies you never targeted. Read it as a directional signal about who is seeing
@@ -276,6 +275,7 @@ const CSS = `
 
 .co-empty{max-width:1060px;margin:0 auto;background:var(--white);border:1px solid var(--ink);
   border-top:none;padding:22px;font-size:12.5px;line-height:1.6;color:var(--ink-2);}
+.masthead{max-width:1060px;}
 .co-body{max-width:1060px;margin:0 auto;background:var(--white);border:1px solid var(--ink);
   border-top:none;}
 .co-block{padding:14px 22px 18px;border-bottom:1px solid var(--rule);}

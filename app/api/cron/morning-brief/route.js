@@ -78,7 +78,7 @@ export async function GET(request) {
   }
 
   if (!accounts.length) {
-    return NextResponse.json({ error: 'Every account failed — nothing sent', failures }, { status: 502 });
+    return NextResponse.json({ error: 'Every account failed, nothing sent', failures }, { status: 502 });
   }
 
   const siteUrl = process.env.SITE_URL || '';

@@ -62,9 +62,9 @@ export async function GET(request) {
         level,
         message:
           level === 'over'
-            ? `Pacing ${Math.round((pace - 1) * 100)}% hot — on track for ${Math.round(projected)} against a ${cap} cap.`
+            ? `Pacing ${Math.round((pace - 1) * 100)}% hot, on track for ${Math.round(projected)} against a ${cap} cap.`
             : level === 'under'
-              ? `Pacing ${Math.round((1 - pace) * 100)}% cold — on track for ${Math.round(projected)} against a ${cap} cap.`
+              ? `Pacing ${Math.round((1 - pace) * 100)}% cold, on track for ${Math.round(projected)} against a ${cap} cap.`
               : 'On pace.',
       });
     } catch (err) {
@@ -83,7 +83,7 @@ export async function GET(request) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text:
-            `*LinkedIn spend alarm* — day ${dayOfMonth} of ${daysInMonth}\n` +
+            `*LinkedIn spend alarm*, day ${dayOfMonth} of ${daysInMonth}\n` +
             alerts.map((a) => `• ${a.label}: ${a.message}`).join('\n'),
         }),
       });

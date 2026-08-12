@@ -64,7 +64,7 @@ const ITEMS = [
     id: 'audience-network',
     section: 'Targeting',
     label: 'LinkedIn Audience Network set deliberately, not left on default',
-    why: 'Also on by default. Fine for reach, poor for lead quality — decide, do not inherit.',
+    why: 'Also on by default. Fine for reach, poor for lead quality. Decide, do not inherit.',
     blocker: true,
   },
   {
@@ -76,7 +76,7 @@ const ITEMS = [
   {
     id: 'exclusions',
     section: 'Targeting',
-    label: 'Exclusions applied — existing customers, competitors, own staff',
+    label: 'Exclusions applied for existing customers, competitors and own staff',
     why: 'Paying to advertise to people already under contract is the easiest waste to prevent and the most embarrassing to explain.',
   },
   {
@@ -134,7 +134,7 @@ const ITEMS = [
     id: 'char-limits',
     section: 'Creative',
     label: 'Copy within limits and truncation previewed on mobile',
-    why: '70-character headline, 150-character intro. Desktop and mobile truncate at different points — check the one your audience actually uses.',
+    why: '70-character headline, 150-character intro. Desktop and mobile truncate at different points, so check the one your audience actually uses.',
     blocker: true,
   },
   {
@@ -211,13 +211,6 @@ const ITEMS = [
 
   /* ---- access & compliance ---- */
   {
-    id: 'billing',
-    section: 'Access & compliance',
-    label: 'Billing set up and payment method valid',
-    why: 'A declined card pauses everything mid-flight, and recovery is not instant.',
-    blocker: true,
-  },
-  {
     id: 'page-access',
     section: 'Access & compliance',
     label: 'Page admin and ad account access confirmed',
@@ -246,13 +239,17 @@ const ITEMS = [
   },
 ];
 
+/* The order work actually happens in. Access comes first because nothing
+ * can be built without it, and tracking second because it has to be live
+ * before spend starts and cannot be backdated. Forms and routing sit last:
+ * they are tested right before launch, not built first. */
 const SECTIONS = [
+  'Access & compliance',
   'Tracking',
   'Targeting',
   'Budget & schedule',
   'Creative',
   'Forms & routing',
-  'Access & compliance',
 ];
 
 /* ------------------------------------------------------------------ */
@@ -333,7 +330,7 @@ export default function QAChecklist() {
 
   const copyReport = () => {
     const lines = [
-      `PRE-LAUNCH QA — ${linked || 'Unnamed client'}`,
+      `PRE-LAUNCH QA: ${linked || 'Unnamed client'}`,
       `${new Date().toLocaleDateString('en-GB')} · ${stats.done}/${stats.total} complete · ${cleared ? 'CLEARED FOR LAUNCH' : `${stats.outstanding.length} blocker(s) outstanding`}`,
       '',
       ...SECTIONS.flatMap((s) => {
@@ -383,17 +380,6 @@ export default function QAChecklist() {
             </span>
           </div>
         </div>
-
-        {stats.outstanding.length > 0 && (
-          <div className="outstanding">
-            <span className="out-tag">Outstanding blockers</span>
-            <ul>
-              {stats.outstanding.map((i) => (
-                <li key={i.id}>{i.label}</li>
-              ))}
-            </ul>
-          </div>
-        )}
 
         <div className="list">
           {SECTIONS.map((s) => {
@@ -456,6 +442,20 @@ export default function QAChecklist() {
           })}
         </div>
 
+        {/* Sits under the list rather than over it: the point of the block is
+         * what is left when you reach the bottom, not what to expect on the
+         * way down. */}
+        {stats.outstanding.length > 0 && (
+          <div className="outstanding">
+            <span className="out-tag">Outstanding blockers</span>
+            <ul>
+              {stats.outstanding.map((i) => (
+                <li key={i.id}>{i.label}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <footer className="foot">
           <button type="button" className="btn" onClick={copyReport}>
             Copy report
@@ -489,7 +489,7 @@ const CSS = `
 .bar-meta{display:flex;justify-content:space-between;margin-top:6px;
   font-family:'Courier Prime',monospace;font-size:11.5px;color:var(--ink-2);}
 .outstanding{background:#F7E9C8;border-left:1px solid var(--ink);border-right:1px solid var(--ink);
-  border-bottom:1px solid var(--rule);padding:11px 22px 13px;}
+  border-top:1px solid var(--rule);padding:11px 22px 13px;}
 .out-tag{display:block;font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:9px;
   letter-spacing:.2em;text-transform:uppercase;color:var(--stamp);margin-bottom:5px;}
 .outstanding ul{margin:0;padding-left:17px;}

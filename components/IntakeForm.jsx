@@ -1,6 +1,10 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { downloadBriefPdf } from '@/lib/brief-pdf';
+import { CLIENTS } from '@/lib/client-store';
+
+const CLIENT_NAMES = CLIENTS.map((c) => c.name);
 
 /* ------------------------------------------------------------------ *
  * Benchmark data.
@@ -10,6 +14,9 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
  * what will make the forecast actually trustworthy for Whitehart clients.
  * ------------------------------------------------------------------ */
 const SECTORS = {
+  /* Pharmaceutical leads the list and is the default: it is the whole
+   * client base, so anything else is the exception. */
+  Pharmaceutical: { cpc: 12.5, cpl: 150, ctr: 0.36 },
   'Professional & corporate services': { cpc: 8.5, cpl: 65, ctr: 0.48 },
   'Technology & software (B2B SaaS)': { cpc: 11.0, cpl: 125, ctr: 0.42 },
   'Financial services & insurance': { cpc: 12.0, cpl: 140, ctr: 0.38 },
@@ -20,6 +27,11 @@ const SECTORS = {
   'Media & communications': { cpc: 6.5, cpl: 80, ctr: 0.58 },
   'Other / not listed': { cpc: 9.0, cpl: 100, ctr: 0.45 },
 };
+
+/* The accounts are sold by region, not by country, so the brief captures
+ * regions. Stored as a comma-joined string so everything downstream that
+ * already treats markets as text keeps working. */
+const MARKETS = ['EMEA', 'US', 'APAC'];
 
 const OBJECTIVES = [
   'Brand awareness',
@@ -32,21 +44,17 @@ const OBJECTIVES = [
 
 const EMPTY = {
   client: '',
-  sector: '',
+  campaignName: '',
+  sector: 'Pharmaceutical',
   website: '',
   markets: '',
   objective: '',
   successLooksLike: '',
-  targetLeads: '',
-  dealSize: '',
   startDate: '',
   months: '',
   budget: '',
   campaignCount: '',
-  jobTitles: '',
-  seniority: '',
-  companySize: '',
-  audienceSize: '',
+  audienceNotes: '',
   targetAccountList: '',
   runningNow: '',
   insightTag: '',
@@ -55,8 +63,26 @@ const EMPTY = {
   leadRouting: '',
   landingPages: '',
   assets: [],
+  creatives: [],
   constraints: '',
 };
+
+/* Formats offered in the brief. The same list the Creative tab builds
+ * against, so a brief that names three carousels arrives there as three
+ * carousels rather than as a sentence somebody has to retype. */
+const CREATIVE_FORMATS = [
+  'Single image',
+  'Carousel',
+  'Video',
+  'Document',
+  'Thought leader',
+  'Follower ad',
+  'Spotlight',
+  'Text ad',
+  'Message ad',
+  'Conversation ad',
+  'Event ad',
+];
 
 /* ------------------------------------------------------------------ *
  * Recommendation engine.
@@ -69,8 +95,6 @@ function analyse(b) {
   const budget = Number(b.budget) || 0;
   const months = Number(b.months) || 0;
   const campaigns = Number(b.campaignCount) || 0;
-  const audience = Number(b.audienceSize) || 0;
-  const targetLeads = Number(b.targetLeads) || 0;
   const bench = SECTORS[b.sector];
 
   const monthly = months ? budget / months : 0;
@@ -83,15 +107,20 @@ function analyse(b) {
     add(
       'blocker',
       'Insight Tag not installed',
-      'Without it there is no conversion tracking, no website retargeting and no site-based Matched Audiences. Install site-wide before launch — allow 24–48 hours for it to verify.'
+      'Without it there is no conversion tracking, no website retargeting and no site-based Matched Audiences. Install site-wide before launch and allow 24 to 48 hours for it to verify.'
     );
   }
 
-  if (b.insightTag === 'Yes' && b.conversionTracking === 'No') {
+  /* Deliberately not gated on the Insight Tag being present. Both can be
+   * wrong at once, and when they are, both need saying: fixing the tag
+   * alone still leaves nothing counted. */
+  if (b.conversionTracking === 'No') {
     add(
       'blocker',
       'No conversion actions defined',
-      'The tag is firing but nothing is being counted. Define conversions in Campaign Manager and attach them to campaigns — conversions only track once linked.'
+      b.insightTag === 'No'
+        ? 'Nothing is being counted, and nothing will be even once the tag is live. Define conversions in Campaign Manager and attach them to campaigns, because conversions only track once linked.'
+        : 'The tag is firing but nothing is being counted. Define conversions in Campaign Manager and attach them to campaigns, because conversions only track once linked.'
     );
   }
 
@@ -106,40 +135,12 @@ function analyse(b) {
   if (daily > 0 && dailyPerCampaign < 10) {
     add(
       'blocker',
-      `Daily spend too thin (~£${dailyPerCampaign.toFixed(2)}/campaign)`,
-      `£${budget.toLocaleString()} over ${months} month${months === 1 ? '' : 's'} across ${campaigns || 1} campaign${campaigns === 1 ? '' : 's'} sits under LinkedIn's practical £10/day floor. Cut campaign count or raise budget, or delivery will stall.`
+      `Daily spend too thin (about $${dailyPerCampaign.toFixed(2)} per campaign)`,
+      `$${budget.toLocaleString()} over ${months} month${months === 1 ? '' : 's'} across ${campaigns || 1} campaign${campaigns === 1 ? '' : 's'} sits under LinkedIn's practical $10/day floor. Cut campaign count or raise budget, or delivery will stall.`
     );
-  }
-
-  if (bench && targetLeads && monthly) {
-    const forecastLeads = monthly / bench.cpl;
-    if (targetLeads > forecastLeads * 1.25) {
-      const needed = targetLeads * bench.cpl;
-      add(
-        'blocker',
-        'Target unreachable on this budget',
-        `${targetLeads} leads/month at a sector benchmark of £${bench.cpl} CPL needs roughly £${Math.round(needed).toLocaleString()}/month. Current plan gives about ${Math.floor(forecastLeads)}. Reset the target or the budget before committing.`
-      );
-    }
   }
 
   /* ---------- Actions: things to do differently ---------- */
-
-  if (audience > 0 && audience < 50000) {
-    add(
-      'action',
-      'Audience likely too narrow',
-      `${audience.toLocaleString()} is below the 50k floor where Sponsored Content delivers reliably. Broaden seniority or add adjacent job functions, or accept high frequency and low reach.`
-    );
-  }
-
-  if (audience > 500000 && ['Lead generation', 'Website conversions'].includes(b.objective)) {
-    add(
-      'action',
-      'Audience too broad for this objective',
-      `${audience.toLocaleString()} will scatter spend. Layer company size, seniority or a company list to tighten it before pushing conversion budget through.`
-    );
-  }
 
   if (b.targetAccountList === 'Yes') {
     add(
@@ -183,19 +184,11 @@ function analyse(b) {
 
   /* ---------- Notes: worth knowing, not urgent ---------- */
 
-  if (b.markets && /\b(eu|europe|germany|france|spain|italy|netherlands|ireland|poland)\b/i.test(b.markets)) {
+  if (b.markets && /\b(emea|eu|europe|germany|france|spain|italy|netherlands|ireland|poland)\b/i.test(b.markets)) {
     add(
       'note',
       'EU targeting caveats',
       'Sponsored Messaging requires prior opt-in for EU members under the ePrivacy Directive, and Matched Audience sizes run smaller in the EEA because matching depends on member consent.'
-    );
-  }
-
-  if (b.objective === 'Brand awareness') {
-    add(
-      'note',
-      'Set a frequency cap',
-      'Awareness campaigns support native frequency capping. Without one, engagement decays and negative feedback climbs as the same people see the ad repeatedly.'
     );
   }
 
@@ -229,7 +222,6 @@ function forecast(b) {
   const clicks = monthly / bench.cpc;
   const impressions = clicks / (bench.ctr / 100);
   const leads = monthly / bench.cpl;
-  const dealSize = Number(b.dealSize) || 0;
 
   return {
     monthly,
@@ -239,7 +231,6 @@ function forecast(b) {
     leads,
     cpl: bench.cpl,
     cpc: bench.cpc,
-    pipeline: dealSize ? leads * dealSize : null,
   };
 }
 
@@ -289,7 +280,32 @@ function Area({ value, onChange, placeholder, rows = 2 }) {
 function Choose({ value, onChange, options }) {
   return (
     <select className="inp sel" value={value} onChange={(e) => onChange(e.target.value)}>
-      <option value="">—</option>
+      <option value="">Choose one</option>
+      {options.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** Native multi-select. Value is stored and emitted as a comma-joined string. */
+function Multi({ value, onChange, options }) {
+  const selected = String(value || '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+  return (
+    <select
+      className="inp sel multi"
+      multiple
+      size={options.length}
+      value={selected}
+      onChange={(e) =>
+        onChange([...e.target.selectedOptions].map((o) => o.value).join(', '))
+      }
+    >
       {options.map((o) => (
         <option key={o} value={o}>
           {o}
@@ -356,6 +372,9 @@ export default function IntakeForm() {
   const [b, setB] = useState(EMPTY);
   const [saved, setSaved] = useState('');
   const [copied, setCopied] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [airtable, setAirtable] = useState({ state: 'idle', message: '', url: null });
+  const [savedBriefs, setSavedBriefs] = useState([]);
   const loaded = useRef(false);
 
   const set = (k) => (v) => setB((prev) => ({ ...prev, [k]: v }));
@@ -367,6 +386,12 @@ export default function IntakeForm() {
         if (r?.value) setB({ ...EMPTY, ...JSON.parse(r.value) });
       } catch {
         /* no saved brief yet - expected on first run */
+      }
+      try {
+        const { keys } = await window.storage.list('brief:client:');
+        setSavedBriefs(keys.map((k) => k.replace('brief:client:', '')).sort());
+      } catch {
+        /* nothing saved by client yet */
       }
       loaded.current = true;
     })();
@@ -387,6 +412,60 @@ export default function IntakeForm() {
 
   const notes = useMemo(() => analyse(b), [b]);
   const fc = useMemo(() => forecast(b), [b]);
+  const totalCreatives = b.creatives.reduce((n, c) => n + (Number(c.quantity) || 0), 0);
+
+  /* ---- creative picks ---- */
+  const toggleFormat = (format) =>
+    setB((p) => ({
+      ...p,
+      creatives: p.creatives.some((c) => c.format === format)
+        ? p.creatives.filter((c) => c.format !== format)
+        : [...p.creatives, { format, quantity: 1 }],
+    }));
+
+  const bumpFormat = (format, delta) =>
+    setB((p) => ({
+      ...p,
+      creatives: p.creatives.map((c) =>
+        c.format === format
+          ? { ...c, quantity: Math.min(20, Math.max(1, c.quantity + delta)) }
+          : c
+      ),
+    }));
+
+  /* ---- saving a brief by client ----
+   * `brief:current` is the autosave the other tools read. A named save
+   * writes a second copy under the client so switching between accounts
+   * does not overwrite the one you were last looking at. */
+  const refreshSaved = async () => {
+    try {
+      const { keys } = await window.storage.list('brief:client:');
+      setSavedBriefs(keys.map((k) => k.replace('brief:client:', '')).sort());
+    } catch {
+      setSavedBriefs([]);
+    }
+  };
+
+  const saveBrief = async () => {
+    if (!b.client) return;
+    try {
+      await window.storage.set(`brief:client:${b.client}`, JSON.stringify(b));
+      await refreshSaved();
+      setSaved(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+    } catch (err) {
+      setAirtable({ state: 'error', message: `Could not save: ${err.message}`, url: null });
+    }
+  };
+
+  const loadBrief = async (client) => {
+    try {
+      const r = await window.storage.get(`brief:client:${client}`);
+      setB({ ...EMPTY, ...JSON.parse(r.value) });
+      setAirtable({ state: 'done', message: `Loaded the saved brief for ${client}`, url: null });
+    } catch {
+      setAirtable({ state: 'error', message: `No saved brief for ${client}`, url: null });
+    }
+  };
 
   const filled = Object.entries(b).filter(([, v]) =>
     Array.isArray(v) ? v.length > 0 : String(v).trim() !== ''
@@ -395,7 +474,7 @@ export default function IntakeForm() {
 
   const copy = () => {
     const lines = [
-      `LINKEDIN ADS — DISCOVERY BRIEF`,
+      `LINKEDIN ADS DISCOVERY BRIEF`,
       `${b.client || 'Unnamed client'} · ${new Date().toLocaleDateString('en-GB')}`,
       '',
       ...Object.entries(b)
@@ -403,15 +482,48 @@ export default function IntakeForm() {
         .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`),
       '',
       'FLAGS',
-      ...notes.map((n) => `[${n.level.toUpperCase()}] ${n.title} — ${n.body}`),
+      ...notes.map((n) => `[${n.level.toUpperCase()}] ${n.title}. ${n.body}`),
     ];
     navigator.clipboard?.writeText(lines.join('\n'));
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   };
 
-  const money = (n) =>
-    '£' + Math.round(n).toLocaleString('en-GB');
+  const exportPdf = async () => {
+    setExporting(true);
+    try {
+      await downloadBriefPdf(b, notes, fc);
+    } catch (err) {
+      setAirtable({ state: 'error', message: `Could not build the PDF: ${err.message}`, url: null });
+    }
+    setExporting(false);
+  };
+
+  /* The Airtable token is a write credential for the whole base, so the
+   * write happens server-side. The browser only ever sends the brief. */
+  const saveToAirtable = async () => {
+    setAirtable({ state: 'saving', message: 'Saving…', url: null });
+    try {
+      const res = await fetch('/api/airtable/brief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brief: b,
+          flags: notes.map((n) => `[${n.level.toUpperCase()}] ${n.title}. ${n.body}`).join('\n'),
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) {
+        setAirtable({ state: 'error', message: json.error || `Failed (${res.status})`, url: null });
+        return;
+      }
+      setAirtable({ state: 'done', message: 'Saved to Airtable', url: json.url });
+    } catch (err) {
+      setAirtable({ state: 'error', message: `Could not reach the server: ${err.message}`, url: null });
+    }
+  };
+
+  const money = (n) => '$' + Math.round(n).toLocaleString('en-GB');
 
   return (
     <>
@@ -424,10 +536,6 @@ export default function IntakeForm() {
             <h1 className="mast-title">Client discovery brief</h1>
           </div>
           <dl className="mast-meta">
-            <div>
-              <dt>Form</dt>
-              <dd>LA-01</dd>
-            </div>
             <div>
               <dt>Date</dt>
               <dd>{new Date().toLocaleDateString('en-GB')}</dd>
@@ -446,16 +554,23 @@ export default function IntakeForm() {
           <div className="copy top-copy">
             <Section letter="A" title="Client & market">
               <Field label="Client">
-                <Text value={b.client} onChange={set('client')} placeholder="Company name" />
+                <Choose value={b.client} onChange={set('client')} options={CLIENT_NAMES} />
+              </Field>
+              <Field label="Campaign name" hint="carries through to creative">
+                <Text
+                  value={b.campaignName}
+                  onChange={set('campaignName')}
+                  placeholder="Q3 patient access push"
+                />
               </Field>
               <Field label="Sector" hint="drives benchmarks">
                 <Choose value={b.sector} onChange={set('sector')} options={Object.keys(SECTORS)} />
               </Field>
-              <Field label="Website">
+              <Field label="Website / landing page">
                 <Text value={b.website} onChange={set('website')} placeholder="example.com" />
               </Field>
-              <Field label="Markets">
-                <Text value={b.markets} onChange={set('markets')} placeholder="UK, Ireland, DACH" />
+              <Field label="Markets" hint="hold ctrl or cmd for more than one">
+                <Multi value={b.markets} onChange={set('markets')} options={MARKETS} />
               </Field>
             </Section>
 
@@ -470,28 +585,11 @@ export default function IntakeForm() {
                   placeholder="What do they say a good outcome is?"
                 />
               </Field>
-              <Field label="Target leads / month">
-                <Text
-                  value={b.targetLeads}
-                  onChange={set('targetLeads')}
-                  type="number"
-                  placeholder="0"
-                />
-              </Field>
-              <Field label="Average deal size">
-                <Text
-                  value={b.dealSize}
-                  onChange={set('dealSize')}
-                  type="number"
-                  prefix="£"
-                  placeholder="0"
-                />
-              </Field>
             </Section>
 
             <Section letter="C" title="Budget & duration">
               <Field label="Total budget">
-                <Text value={b.budget} onChange={set('budget')} type="number" prefix="£" placeholder="0" />
+                <Text value={b.budget} onChange={set('budget')} type="number" prefix="$" placeholder="0" />
               </Field>
               <Field label="Duration" hint="months">
                 <Text value={b.months} onChange={set('months')} type="number" placeholder="0" />
@@ -510,29 +608,12 @@ export default function IntakeForm() {
             </Section>
 
             <Section letter="D" title="Audience">
-              <Field label="Job titles & functions">
+              <Field label="Audience" hint="their words, not a structure">
                 <Area
-                  value={b.jobTitles}
-                  onChange={set('jobTitles')}
-                  placeholder="Heads of Marketing, Demand Gen Managers…"
-                />
-              </Field>
-              <Field label="Seniority">
-                <Text
-                  value={b.seniority}
-                  onChange={set('seniority')}
-                  placeholder="Manager and above"
-                />
-              </Field>
-              <Field label="Company size">
-                <Text value={b.companySize} onChange={set('companySize')} placeholder="201–1000" />
-              </Field>
-              <Field label="Est. audience size">
-                <Text
-                  value={b.audienceSize}
-                  onChange={set('audienceSize')}
-                  type="number"
-                  placeholder="0"
+                  value={b.audienceNotes}
+                  onChange={set('audienceNotes')}
+                  rows={6}
+                  placeholder="Who to reach, how to split them, who to exclude. At brief stage the exact split is rarely known, so capture what was actually said. Sizing and structure get worked out on the Plan score calculator."
                 />
               </Field>
               <Field label="Target account list available">
@@ -589,27 +670,133 @@ export default function IntakeForm() {
               </Field>
             </Section>
 
+            <Section letter="G" title="Creative to produce">
+              <div className="fld stack-fld">
+                <span className="fld-label">
+                  Formats
+                  <em className="fld-hint">carries into the Creative tab</em>
+                </span>
+                <div className="cfmt">
+                  {CREATIVE_FORMATS.map((f) => {
+                    const picked = b.creatives.find((c) => c.format === f);
+                    return (
+                      <div className={picked ? 'cfmt-row on' : 'cfmt-row'} key={f}>
+                        <button
+                          type="button"
+                          className="cfmt-name"
+                          onClick={() => toggleFormat(f)}
+                          aria-pressed={Boolean(picked)}
+                        >
+                          <span className="cfmt-box">{picked ? '×' : ''}</span>
+                          {f}
+                        </button>
+                        {picked && (
+                          <span className="cfmt-step">
+                            <button
+                              type="button"
+                              className="cfmt-b"
+                              onClick={() => bumpFormat(f, -1)}
+                              disabled={picked.quantity <= 1}
+                              aria-label={`One fewer ${f}`}
+                            >
+                              −
+                            </button>
+                            <span className="cfmt-n">{picked.quantity}</span>
+                            <button
+                              type="button"
+                              className="cfmt-b"
+                              onClick={() => bumpFormat(f, 1)}
+                              disabled={picked.quantity >= 20}
+                              aria-label={`One more ${f}`}
+                            >
+                              +
+                            </button>
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              {totalCreatives > 0 && (
+                <p className="cfmt-total">
+                  {totalCreatives} asset{totalCreatives === 1 ? '' : 's'} across{' '}
+                  {b.creatives.length} format{b.creatives.length === 1 ? '' : 's'}. Open the
+                  Creative tab to write the copy.
+                </p>
+              )}
+            </Section>
+
             <footer className="foot">
-              <button type="button" className="btn" onClick={copy}>
-                {copied ? 'Copied' : 'Copy brief'}
-              </button>
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={() => {
-                  if (confirm('Clear this brief and start a new one?')) setB(EMPTY);
-                }}
-              >
-                New brief
-              </button>
-              <span className="save">{saved ? `Saved ${saved}` : 'Saving…'}</span>
+              <div className="foot-btns">
+                <button type="button" className="btn" onClick={exportPdf} disabled={exporting}>
+                  {exporting ? 'Building…' : 'Download PDF'}
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={saveToAirtable}
+                  disabled={airtable.state === 'saving'}
+                >
+                  {airtable.state === 'saving' ? 'Saving…' : 'Save to Airtable'}
+                </button>
+                <button type="button" className="btn" onClick={saveBrief} disabled={!b.client}>
+                  Save
+                </button>
+                <button type="button" className="btn ghost" onClick={copy}>
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={() => {
+                    if (confirm('Clear this brief and start a new one?')) setB(EMPTY);
+                  }}
+                >
+                  New brief
+                </button>
+              </div>
+              <div className="foot-meta">
+                <span className="save">{saved ? `Autosaved ${saved}` : 'Autosaving'}</span>
+                {savedBriefs.length > 0 && (
+                  <label className="loadwrap">
+                    <span className="load-lab">Load saved</span>
+                    <select
+                      className="load-sel"
+                      value=""
+                      onChange={(e) => e.target.value && loadBrief(e.target.value)}
+                    >
+                      <option value="">Choose a client</option>
+                      {savedBriefs.map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
             </footer>
+
+            {airtable.state !== 'idle' && airtable.state !== 'saving' && (
+              <p className={`airtable-msg${airtable.state === 'error' ? ' bad' : ''}`}>
+                {airtable.message}
+                {airtable.url && (
+                  <>
+                    {'. '}
+                    <a href={airtable.url} target="_blank" rel="noreferrer">
+                      open the record
+                    </a>
+                  </>
+                )}
+              </p>
+            )}
           </div>
 
           {/* ---------------- carbon copy: what it implies ---------------- */}
           <aside className="copy carbon">
             <div className="carbon-head">
-              <span className="carbon-eyebrow">Duplicate — office copy</span>
+              <span className="carbon-eyebrow">Duplicate, office copy</span>
               <h2 className="carbon-title">What this implies</h2>
             </div>
 
@@ -643,12 +830,6 @@ export default function IntakeForm() {
                         {Math.floor(fc.leads).toLocaleString()} <em>@ {money(fc.cpl)}</em>
                       </td>
                     </tr>
-                    {fc.pipeline && (
-                      <tr>
-                        <th>Pipeline value</th>
-                        <td>{money(fc.pipeline)}</td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
                 <p className="fcast-note">
@@ -804,12 +985,18 @@ const CSS = `
 .inp:focus-visible { outline: 2px solid var(--carbon); outline-offset: 2px; }
 .area { resize: vertical; line-height: 1.5; min-height: 44px; }
 .sel { cursor: pointer; }
+.multi { height: auto; padding: 4px 6px; border: 1px solid var(--rule); background: var(--white); }
+.multi option { padding: 2px 4px; }
 /* ---- toggles ---- */
-.tog { display: inline-flex; border: 1px solid var(--rule); }
+/* The span is a grid item, so without this it stretched the full column and
+ * the border ran on past the buttons, which read as one huge box. Equal
+ * min-widths then keep Yes and No the same size as each other. */
+.tog { display: inline-flex; width: fit-content; justify-self: start; border: 1px solid var(--rule); }
 .tog-btn {
   font-family: 'Archivo Narrow', sans-serif; font-weight: 700;
   font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
-  padding: 5px 15px; background: transparent; color: var(--ink-2);
+  padding: 6px 0; min-width: 62px; text-align: center;
+  background: transparent; color: var(--ink-2);
   border: none; cursor: pointer; transition: background .12s, color .12s;
 }
 .tog-btn + .tog-btn { border-left: 1px solid var(--rule); }
@@ -834,10 +1021,72 @@ const CSS = `
 .tick:focus-visible { outline: 2px solid var(--carbon); outline-offset: 2px; }
 /* ---- footer ---- */
 .foot {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
   padding: 14px 22px; border-top: 1px solid var(--ink);
   background: #F3F2EC;
 }
+/* One row, one height. The buttons previously mixed padding and inherited
+ * line-heights, so they sat at three different heights on one line. */
+.foot-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.foot-btns .btn {
+  height: 34px; padding: 0 16px; margin: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  line-height: 1; white-space: nowrap;
+}
+.foot-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.loadwrap { display: inline-flex; align-items: center; gap: 6px; }
+.load-lab {
+  font-family: 'Archivo Narrow', sans-serif; font-weight: 700; font-size: 9px;
+  letter-spacing: .16em; text-transform: uppercase; color: var(--ink-2);
+}
+.load-sel {
+  font-family: 'Courier Prime', monospace; font-size: 12px; color: var(--carbon);
+  background: var(--white); border: 1px solid var(--rule); padding: 5px 7px;
+  border-radius: 0; height: 30px;
+}
+.load-sel:focus-visible { outline: 2px solid var(--carbon); outline-offset: 1px; }
+.btn:disabled { opacity: .45; cursor: default; }
+/* ---- creative picks ---- */
+.stack-fld { display: block; }
+.stack-fld .fld-label { display: block; margin-bottom: 7px; }
+.cfmt { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 3px 14px; }
+.cfmt-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+.cfmt-name {
+  flex: 1; display: inline-flex; align-items: center; gap: 7px; min-width: 0;
+  font-family: 'Archivo', sans-serif; font-size: 12.5px; color: var(--ink-2);
+  background: none; border: none; padding: 2px 0; cursor: pointer; text-align: left;
+}
+.cfmt-row.on .cfmt-name { color: var(--ink); }
+.cfmt-box {
+  width: 14px; height: 14px; flex: none;
+  border: 1px solid var(--rule); background: var(--white);
+  font-family: 'Courier Prime', monospace; font-size: 13px; line-height: 12px;
+  color: var(--carbon); text-align: center;
+}
+.cfmt-row.on .cfmt-box { border-color: var(--carbon); }
+.cfmt-name:focus-visible { outline: 2px solid var(--carbon); outline-offset: 2px; }
+.cfmt-step { display: inline-flex; align-items: center; border: 1px solid var(--rule); flex: none; }
+.cfmt-b {
+  width: 20px; height: 20px; background: none; border: none; cursor: pointer;
+  font-family: 'Courier Prime', monospace; font-size: 14px; line-height: 1;
+  color: var(--carbon); padding: 0;
+}
+.cfmt-b:disabled { opacity: .3; cursor: default; }
+.cfmt-b:focus-visible { outline: 2px solid var(--carbon); outline-offset: -2px; }
+.cfmt-n {
+  min-width: 20px; text-align: center; font-family: 'Courier Prime', monospace;
+  font-size: 12px; font-weight: 700;
+  border-left: 1px solid var(--rule); border-right: 1px solid var(--rule); padding: 1px 0;
+}
+.cfmt-total { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--carbon); }
+.airtable-msg {
+  margin: 0; padding: 10px 22px 13px; background: #F3F2EC;
+  border-top: 1px dotted var(--rule);
+  font-size: 12px; line-height: 1.5; color: var(--ok);
+}
+.airtable-msg.bad { color: var(--stamp); }
+.airtable-msg a { color: var(--carbon); }
 .btn {
   font-family: 'Archivo Narrow', sans-serif; font-weight: 700;
   font-size: 11px; letter-spacing: .13em; text-transform: uppercase;
@@ -853,7 +1102,9 @@ const CSS = `
   font-family: 'Courier Prime', monospace; font-size: 11.5px; color: var(--ink-2);
 }
 /* ---- carbon copy ---- */
-.carbon-head { padding: 18px 20px 12px; border-bottom: 1px solid var(--rule-2); }
+/* Matches the form's own section header height so the two columns start on
+ * the same line. It used to sit 7px lower, which read as a misalignment. */
+.carbon-head { padding: 11px 20px 10px; border-bottom: 1px solid var(--rule-2); }
 .carbon-eyebrow {
   font-family: 'Archivo Narrow', sans-serif; font-weight: 700;
   font-size: 9.5px; letter-spacing: .2em; text-transform: uppercase;

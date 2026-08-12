@@ -36,14 +36,14 @@ const Z_POWER = 0.8416;
 
 function evaluate(nA, xA, nB, xB, confidence) {
   if (!nA || !nB || nA <= 0 || nB <= 0) return null;
-  if (xA > nA || xB > nB) return { error: 'More conversions than trials — check the inputs.' };
+  if (xA > nA || xB > nB) return { error: 'More conversions than trials. Check the inputs.' };
 
   const pA = xA / nA;
   const pB = xB / nB;
   const pooled = (xA + xB) / (nA + nB);
 
   const sePooled = Math.sqrt(pooled * (1 - pooled) * (1 / nA + 1 / nB));
-  if (sePooled === 0) return { error: 'No variation in the data — both rates are identical at 0 or 100%.' };
+  if (sePooled === 0) return { error: 'No variation in the data, because both rates are identical at 0 or 100%.' };
 
   const z = (pB - pA) / sePooled;
   const pValue = 2 * (1 - normalCdf(Math.abs(z)));
@@ -147,7 +147,7 @@ export default function SignificanceCalculator() {
     if (Math.min(xA, xB) < 30) {
       w.push({
         level: 'blocker',
-        text: `Only ${Math.min(xA, xB)} ${labels.event.toLowerCase()} in the smaller arm. Below about 30 the maths is unstable and a single extra event swings the result — do not call this yet whatever the p-value says.`,
+        text: `Only ${Math.min(xA, xB)} ${labels.event.toLowerCase()} in the smaller arm. Below about 30 the maths is unstable and a single extra event swings the result. Do not call this yet, whatever the p-value says.`,
       });
     }
     if (Math.min(nA, nB) < 1000 && metric === 'Click-through rate') {
@@ -160,19 +160,19 @@ export default function SignificanceCalculator() {
     if (imbalance > 0.25) {
       w.push({
         level: 'action',
-        text: `The two arms differ in size by ${Math.round(imbalance * 100)}%. That is fine statistically, but a large gap usually means LinkedIn is favouring one creative — worth knowing before you conclude the copy caused the difference.`,
+        text: `The two arms differ in size by ${Math.round(imbalance * 100)}%. That is fine statistically, but a large gap usually means LinkedIn is favouring one creative, which is worth knowing before you conclude the copy caused the difference.`,
       });
     }
     if (result.significant && Math.abs(result.diff) < 0.001) {
       w.push({
         level: 'note',
-        text: 'Statistically significant but the absolute difference is tiny. At large volumes trivial gaps clear the significance bar — check the lift is worth acting on commercially.',
+        text: 'Statistically significant but the absolute difference is tiny. At large volumes trivial gaps clear the significance bar, so check the lift is worth acting on commercially.',
       });
     }
     if (!result.significant && planner && !planner.enough) {
       w.push({
         level: 'note',
-        text: 'Not significant is not the same as no difference. The test may simply not have enough data yet — see the planner below.',
+        text: 'Not significant is not the same as no difference. The test may simply not have enough data yet. See the planner below.',
       });
     }
     w.push({
@@ -246,13 +246,13 @@ export default function SignificanceCalculator() {
             <section className="grp">
               <h2 className="grp-head">
                 <span className="grp-letter">B</span>
-                Variant A — control
+                Variant A, control
               </h2>
               <div className="grp-body">
                 <Field label={labels.trial} value={a.n} onChange={(v) => setA((p) => ({ ...p, n: v }))} />
                 <Field label={labels.event} value={a.x} onChange={(v) => setA((p) => ({ ...p, x: v }))} />
                 <div className="rate">
-                  Rate <strong>{nA ? pct(xA / nA) : '—'}</strong>
+                  Rate <strong>{nA ? pct(xA / nA) : 'none yet'}</strong>
                 </div>
               </div>
             </section>
@@ -260,13 +260,13 @@ export default function SignificanceCalculator() {
             <section className="grp">
               <h2 className="grp-head">
                 <span className="grp-letter">C</span>
-                Variant B — challenger
+                Variant B, challenger
               </h2>
               <div className="grp-body">
                 <Field label={labels.trial} value={b.n} onChange={(v) => setB((p) => ({ ...p, n: v }))} />
                 <Field label={labels.event} value={b.x} onChange={(v) => setB((p) => ({ ...p, x: v }))} />
                 <div className="rate">
-                  Rate <strong>{nB ? pct(xB / nB) : '—'}</strong>
+                  Rate <strong>{nB ? pct(xB / nB) : 'none yet'}</strong>
                 </div>
               </div>
             </section>
@@ -321,7 +321,7 @@ export default function SignificanceCalculator() {
                     <span className="head-lab">Relative lift</span>
                     <span className={`head-val${result.diff > 0 ? ' good' : result.diff < 0 ? ' bad' : ''}`}>
                       {result.relLift === null
-                        ? '—'
+                        ? 'not yet'
                         : `${result.relLift > 0 ? '+' : ''}${(result.relLift * 100).toFixed(1)}%`}
                     </span>
                   </div>
@@ -395,7 +395,7 @@ export default function SignificanceCalculator() {
                       </tbody>
                     </table>
                     <p className="read">
-                      Based on 80% power — an 80% chance of spotting a real {minLift}% lift if one
+                      Based on 80% power, meaning an 80% chance of spotting a real {minLift}% lift if one
                       exists. Halving the lift you want to detect roughly quadruples the sample needed.
                     </p>
                   </section>

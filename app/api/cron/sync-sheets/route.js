@@ -120,7 +120,7 @@ export async function GET(request) {
    * leave what is there and report the failure instead. */
   if (!combined.length) {
     return NextResponse.json(
-      { error: 'No rows returned for any client — sheet left untouched', failures },
+      { error: 'No rows returned for any client, so the sheet was left untouched', failures },
       { status: 502 }
     );
   }

@@ -25,26 +25,30 @@ works immediately — no setup, no account, no API.
 
 ## The tools
 
+Listed in the order they are used, which is the order they appear in the nav.
+
 | | | Needs API |
 |---|---|---|
-| LA-00 | Briefs — switch client, export, import | |
-| LA-01 | Intake — discovery capture with live flags | |
-| LA-02 | Forecast — budget to pipeline, and back | |
-| LA-03 | Budget — split spend across the funnel | |
+| LA-01 | Intake — discovery capture with live flags, PDF and Airtable export | |
 | LA-04 | Naming — campaign names and tagged URLs | |
-| LA-05 | QA — 33 pre-launch checks, 17 blocking | |
 | LA-06 | Creative — brief the design team, export PDF | |
 | LA-07 | Significance — is the difference real yet | |
-| LA-08 | CSV analysis — from a Campaign Manager export | |
+| LA-08 | CSV analysis — drop in a Campaign Manager export | |
 | LA-09 | Retargeting — pool fill times and sequencing | |
 | LA-10 | Plan score — score a plan before building it | |
-| LA-REF | Reference — sourced best practice, with dates | |
+| LA-REF | Best practices — sourced, with dates | |
+| LA-05 | QA — 32 pre-launch checks, 16 blocking | |
 | LA-11 | Dayparting — schedule delivery hours | ● |
 | LA-12 | Live reporting — pull straight from the API | ● |
 | LA-13 | Monitor — budget pacing and frequency | ● |
 | LA-14 | Companies — who actually saw the ads | ● |
 
-LA-08 and LA-12 do the same analysis. One takes a pasted CSV, the other
+The home page is a dashboard rather than a menu: Marken, PCI and GCSG each
+show healthy / flagged / paused counts derived from whatever export was last
+saved against them, and a "Needs looking at" list of every flagged campaign
+across all three.
+
+LA-08 and LA-12 do the same analysis. One takes an exported file, the other
 pulls it live. Keep both: the CSV route works on any account you have
 Campaign Manager access to, including ones the API app is not approved for.
 
@@ -305,9 +309,11 @@ Base IDs, for when you wire this up:
 | QA & Delivery | `appNmt8ZX0J4BAxCO` |
 | Creative Briefs | `appxFuQogVmgffxf6` |
 
-Nothing in the app writes to Airtable yet — it is used directly through the
-Airtable interface. Adding a write path would need a Personal Access Token
-scoped to these two bases.
+The intake form writes to Airtable through `/api/airtable/brief`. Set
+`AIRTABLE_TOKEN` (a Personal Access Token with `data.records:write`) and
+`AIRTABLE_BASE_ID`, plus `AIRTABLE_BRIEFS_TABLE` if the table is not called
+`Briefs`. The token stays server-side — the browser only ever posts the brief.
+Everything else here is still used directly through the Airtable interface.
 
 Airtable's API surface here cannot create link fields, so add these three by
 hand — *Add field → Link to another record*:
@@ -326,7 +332,7 @@ per launch without any code.
 
 ## Storage
 
-Nine components persist through `window.storage`, an API that only exists
+Seven components persist through `window.storage`, an API that only exists
 inside the Claude artifact sandbox. `lib/storage.js` provides the same shape
 backed by `localStorage` and installs it in `components/Nav.jsx` before any
 tool renders.
@@ -335,7 +341,8 @@ One detail matters: `get` **throws** on a missing key rather than returning
 null, because that is what the components' `try/catch` blocks expect. Change
 that and briefs silently fail to load.
 
-Data lives in one browser. Use the export in LA-00 before switching machines.
+Data lives in one browser, including the per-client uploads behind the
+dashboard (`lib/client-store.js`, one key per client).
 To move to a server backend, swap the four method bodies in `lib/storage.js`
 for calls to an API route — nothing else changes.
 

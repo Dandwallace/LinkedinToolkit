@@ -15,7 +15,7 @@ function frequencyVerdict(freq, days) {
   if (perThirty < 2) return { level: 'low', text: 'Barely landing. Most people are seeing this once and forgetting it.' };
   if (perThirty <= 12) return { level: 'ok', text: 'Within the normal B2B range.' };
   if (perThirty <= 20) return { level: 'warn', text: 'Heavy. Watch for engagement decay and negative feedback.' };
-  return { level: 'high', text: 'Saturated. The audience is too small for this budget — broaden it or cap frequency.' };
+  return { level: 'high', text: 'Saturated. The audience is too small for this budget. Broaden it or cap frequency.' };
 }
 
 export default function MonitorPage() {
@@ -91,9 +91,8 @@ export default function MonitorPage() {
         <div>
           <div className="mast-eyebrow">LinkedIn Ads · Whitehart</div>
           <h1 className="mast-title">Monitor</h1>
-          <div className="linked">Budget pacing and frequency — the two that go wrong quietly</div>
+          <div className="linked">Budget pacing and frequency, the two that go wrong quietly</div>
         </div>
-        <dl className="mast-meta"><dt>Form</dt><dd>LA-13</dd></dl>
       </header>
 
       {apiError && (
@@ -107,7 +106,7 @@ export default function MonitorPage() {
           <span>Ad account</span>
           {accounts ? (
             <select value={account} onChange={(e) => setAccount(e.target.value)}>
-              <option value="">—</option>
+              <option value="">Choose an account</option>
               {accounts.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.id})</option>)}
             </select>
           ) : (
@@ -159,13 +158,13 @@ export default function MonitorPage() {
               </div>
               <p className={`mo-verdict ${pacing.level}`}>
                 {pacing.level === 'over'
-                  ? `Pacing ${Math.round((pacing.pace - 1) * 100)}% hot. On track for ${money(pacing.projected)} against a ${money(pacing.cap)} cap — roughly ${money(pacing.projected - pacing.cap)} over.`
+                  ? `Pacing ${Math.round((pacing.pace - 1) * 100)}% hot. On track for ${money(pacing.projected)} against a ${money(pacing.cap)} cap, roughly ${money(pacing.projected - pacing.cap)} over.`
                   : pacing.level === 'under'
                     ? `Pacing ${Math.round((1 - pacing.pace) * 100)}% cold. On track for ${money(pacing.projected)}, leaving about ${money(pacing.cap - pacing.projected)} unspent.`
                     : 'On pace. Projected spend lands within 15% of the cap.'}
               </p>
               <p className="mo-note">
-                Pro-rated against how far through the month you are, not a flat cap check —
+                Pro-rated against how far through the month you are, not a flat cap check.
                 a flat check only fires once the money is already gone. The daily cron at{' '}
                 <code>/api/cron/spend-alarm</code> runs this against every account in{' '}
                 <code>config/budgets.json</code>.
@@ -201,10 +200,10 @@ export default function MonitorPage() {
                         <th>{r.campaign}</th>
                         <td>{money(r.spend)}</td>
                         <td>{num(r.impressions)}</td>
-                        <td>{r.reach ? num(r.reach) : '—'}</td>
-                        <td>{r.frequency ? r.frequency.toFixed(1) : '—'}</td>
+                        <td>{r.reach ? num(r.reach) : 'not reported'}</td>
+                        <td>{r.frequency ? r.frequency.toFixed(1) : 'not reported'}</td>
                         <td className={v?.level}>
-                          {r.frequency ? (r.frequency * (30 / days)).toFixed(1) : '—'}
+                          {r.frequency ? (r.frequency * (30 / days)).toFixed(1) : 'not reported'}
                         </td>
                       </tr>
                     );
@@ -218,7 +217,7 @@ export default function MonitorPage() {
                   .sort((a, b) => b.r.frequency - a.r.frequency)[0];
                 return worst ? (
                   <p className="mo-verdict warn">
-                    <strong>{worst.r.campaign}</strong> — {worst.v.text}
+                    <strong>{worst.r.campaign}</strong>. {worst.v.text}
                   </p>
                 ) : (
                   <p className="mo-verdict ok">No campaign is over-serving its audience.</p>
@@ -226,7 +225,7 @@ export default function MonitorPage() {
               })()}
               <p className="mo-note">
                 Reach is approximate by design, to protect member privacy, and cannot be summed
-                across windows — so this queries the exact range rather than adding up days.
+                across windows, so this queries the exact range rather than adding up days.
                 LinkedIn does not report reach beyond 92 days, and never per company, so
                 frequency stops at campaign level. 7–12 per 30 days is normal for B2B;
                 consumer benchmarks of 3–4 do not apply.
@@ -256,6 +255,7 @@ const CSS = `
 .mo-field.narrow input,.mo-field.narrow select{min-width:0;width:104px;}
 .mo-field input:focus,.mo-field select:focus{border-color:var(--carbon);}
 
+.masthead{max-width:1000px;}
 .mo-body{max-width:1000px;margin:0 auto;background:var(--white);border:1px solid var(--ink);
   border-top:none;}
 .mo-block{padding:14px 22px 18px;border-bottom:1px solid var(--rule);}
