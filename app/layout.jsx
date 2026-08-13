@@ -1,4 +1,5 @@
 import './globals.css';
+import Link from 'next/link';
 import Nav from '@/components/Nav';
 
 export const metadata = {
@@ -13,6 +14,11 @@ export default function RootLayout({ children }) {
         <div className="shell">
           <Nav />
           <main>{children}</main>
+          {/* Deliberately not in the nav: it exists to be pointed at, not
+            * navigated to. */}
+          <footer className="shell-foot">
+            <Link href="/privacy">Privacy</Link>
+          </footer>
         </div>
       </body>
     </html>
