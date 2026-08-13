@@ -312,3 +312,18 @@ body{
 .navlink.setup{margin-left:auto;color:#8E9089;border-left:1px solid #34362F;}
 .navlink.setup:hover{color:var(--white);}
 .topbar-brief + .navlink.setup{margin-left:10px;}
+
+/* ---- privacy ---- */
+.masthead.pv-head{max-width:720px;}
+.pv-body{max-width:720px;margin:0 auto;background:var(--white);
+  border:1px solid var(--ink);border-top:none;}
+.pv-h{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:11px;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--carbon);margin:0 0 6px;}
+.pv-body p{margin:0;font-size:13.5px;line-height:1.65;color:var(--ink);}
+.pv-body a{color:var(--carbon);}
+
+/* ---- footer ---- */
+.shell-foot{padding:16px 20px 26px;text-align:center;}
+.shell-foot a{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:9.5px;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2);text-decoration:none;}
+.shell-foot a:hover{color:var(--carbon);text-decoration:underline;}
