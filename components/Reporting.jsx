@@ -2,7 +2,14 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { parseExportFile } from '@/lib/parse-export';
-import { CLIENTS, saveClientData } from '@/lib/client-store';
+import {
+  CLIENTS,
+  saveClientData,
+  loadAllClients,
+  clearClientData,
+  clearAllClientData,
+  money,
+} from '@/lib/client-store';
 import AnalysisView from '@/components/AnalysisView';
 
 /**
@@ -70,6 +77,8 @@ function UploadMode() {
   const [dragging, setDragging] = useState(false);
   const [client, setClient] = useState(CLIENTS[0].id);
   const [savedTo, setSavedTo] = useState(null);
+  /* Bumped after any write so the stored-reports panel re-reads. */
+  const [storeVersion, setStoreVersion] = useState(0);
   const inputRef = useRef(null);
 
   const handleFile = useCallback(async (file) => {
@@ -96,10 +105,13 @@ function UploadMode() {
     try {
       await saveClientData(client, parsed);
       setSavedTo(CLIENTS.find((c) => c.id === client).name);
+      setStoreVersion((v) => v + 1);
     } catch (err) {
       setError(`Could not save: ${err.message}`);
     }
   };
+
+  const reportType = parsed?.reportType || 'Unspecified report';
 
   const num = (n) => Math.round(n || 0).toLocaleString('en-GB');
 
@@ -168,6 +180,7 @@ function UploadMode() {
             </div>
             <div className="stats">
               {[
+                ['Report type', reportType],
                 ['Encoding', parsed.encoding],
                 ['Delimiter', parsed.delimiter],
                 ['Header on line', String(parsed.metadataLines + 1)],
@@ -216,6 +229,15 @@ function UploadMode() {
               </p>
             )}
 
+            {!parsed.reportType && (
+              <p className="caveat">
+                The report type is usually on the first line above the header, and it is not in
+                this file. That happens when an export has been opened and re-saved. It will be
+                stored as an unspecified report, which means the next export with no type will
+                replace it.
+              </p>
+            )}
+
             <div className="save-row">
               <span className="save-lab">Save against</span>
               <select
@@ -237,8 +259,8 @@ function UploadMode() {
               </button>
               {savedTo && (
                 <span className="saved">
-                  Saved to {savedTo}. Health now shows on the dashboard. Saving again replaces it
-                  rather than adding to it.
+                  Saved to {savedTo} as the {reportType}. Any other report types held for{' '}
+                  {savedTo} are untouched. Health now shows on the dashboard.
                 </span>
               )}
             </div>
@@ -247,7 +269,105 @@ function UploadMode() {
           <AnalysisView rows={parsed.rows} totals={parsed.totals} currency={CURRENCY} />
         </>
       )}
+
+      <StoredReports version={storeVersion} onChange={() => setStoreVersion((v) => v + 1)} />
     </>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * What is stored, and how to get rid of it
+ *
+ * Uploading the wrong client's export used to be unrecoverable without
+ * clearing browser storage wholesale, which took the briefs with it. Reset
+ * is per client, and it names the client in the confirmation, because the
+ * failure this exists to fix is filing data against the wrong one.
+ * ------------------------------------------------------------------ */
+
+function StoredReports({ version, onChange }) {
+  const [clients, setClients] = useState(null);
+
+  useEffect(() => {
+    (async () => setClients(await loadAllClients()))();
+  }, [version]);
+
+  const held = (clients || []).filter((c) => c.data);
+
+  const reset = async (c) => {
+    const types = c.data.reports.map((r) => r.type).join(', ');
+    const ok = window.confirm(
+      `Clear all stored report data for ${c.name}?\n\nThis removes ${c.data.reports.length} ` +
+        `report${c.data.reports.length === 1 ? '' : 's'} (${types}). ` +
+        `No other client is affected. Saved briefs are not affected.`
+    );
+    if (!ok) return;
+    await clearClientData(c.id);
+    onChange();
+  };
+
+  const resetAll = async () => {
+    const ok = window.confirm(
+      `Clear stored report data for every client?\n\nThis removes ${held.length} ` +
+        `client${held.length === 1 ? "'s" : "s'"} uploaded reports. Saved briefs are not affected.`
+    );
+    if (!ok) return;
+    await clearAllClientData();
+    onChange();
+  };
+
+  return (
+    <section className="block">
+      <div className="block-head">
+        Stored report data
+        {held.length > 0 && (
+          <button type="button" className="btn ghost sm" onClick={resetAll}>
+            Clear all report data
+          </button>
+        )}
+      </div>
+
+      {clients === null && <p className="none">Reading saved data…</p>}
+      {clients !== null && held.length === 0 && (
+        <p className="none">Nothing stored against any client yet.</p>
+      )}
+
+      {held.map((c) => (
+        <div className="store" key={c.id}>
+          <div className="store-head">
+            <span className="store-name">{c.name}</span>
+            <span className="store-spend">{money(c.spend)}</span>
+            <button type="button" className="btn ghost sm" onClick={() => reset(c)}>
+              Reset {c.name}
+            </button>
+          </div>
+          <ul className="store-list">
+            {c.data.reports.map((r) => (
+              <li className="store-row" key={r.type}>
+                <span className="store-type">{r.type}</span>
+                <span className="store-meta">
+                  {r.from && r.to ? `${r.from} to ${r.to}` : 'no dates'}
+                  {' · '}
+                  {r.campaigns.length} row{r.campaigns.length === 1 ? '' : 's'}
+                  {r.hasStatus ? ' · carries status' : ' · no status column'}
+                </span>
+                <span className="store-when">
+                  uploaded {new Date(r.savedAt).toLocaleDateString('en-GB')}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+
+      {held.length > 0 && (
+        <p className="caveat">
+          Report types are stored separately because they cannot be combined: a Performance
+          report and a Delivery report describe different things and carry different columns.
+          Status counts are read from whichever report carries a status column and spend from
+          whichever carries spend, so the dates above are worth comparing.
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -412,6 +532,23 @@ const CSS = `
 .save-sel:focus-visible{outline:2px solid var(--carbon);outline-offset:1px;}
 .saved{font-size:11.5px;line-height:1.5;color:#255740;flex:1;min-width:220px;}
 .btn:disabled{opacity:.45;cursor:default;}
+.btn.ghost{background:transparent;color:var(--ink-2);border-color:var(--rule);}
+.btn.ghost:hover{background:var(--white);color:var(--stamp);border-color:var(--stamp);}
+.btn.sm{font-size:9px;letter-spacing:.12em;padding:5px 9px;}
+.store{border-top:1px solid var(--rule);padding:11px 0 3px;}
+.store:first-of-type{border-top:none;}
+.store-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:7px;}
+.store-name{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:12px;
+  letter-spacing:.13em;text-transform:uppercase;}
+.store-spend{font-family:'Courier Prime',monospace;font-weight:700;font-size:14px;
+  color:var(--carbon);margin-right:auto;}
+.store-list{list-style:none;margin:0;padding:0;}
+.store-row{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:5px 0;
+  border-top:1px dotted var(--rule);}
+.store-type{font-family:'Courier Prime',monospace;font-size:12.5px;color:var(--ink);}
+.store-meta{grid-column:1;font-size:10.5px;color:var(--ink-2);}
+.store-when{grid-row:1;grid-column:2;font-family:'Courier Prime',monospace;font-size:10.5px;
+  color:var(--ink-2);white-space:nowrap;}
 .tbl thead th{text-align:right;font-family:'Archivo Narrow',sans-serif;font-weight:700;
   font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-2);
   padding:5px 8px 6px 0;border-bottom:1px solid var(--rule);}

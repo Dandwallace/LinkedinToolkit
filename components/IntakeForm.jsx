@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { downloadBriefPdf } from '@/lib/brief-pdf';
 import { CLIENTS } from '@/lib/client-store';
-import { hasObjective } from '@/lib/brief';
+import { hasObjective, geoToken } from '@/lib/brief';
 
 const CLIENT_NAMES = CLIENTS.map((c) => c.name);
 
@@ -40,6 +40,7 @@ const OBJECTIVES = [
 
 const EMPTY = {
   client: '',
+  stakeholder: '',
   campaignName: '',
   sector: 'Pharmaceutical',
   website: '',
@@ -552,7 +553,14 @@ export default function IntakeForm() {
               <Field label="Client">
                 <Choose value={b.client} onChange={set('client')} options={CLIENT_NAMES} />
               </Field>
-              <Field label="Campaign name" hint="carries through to creative">
+              <Field label="Stakeholder" hint="client-side contact, feeds the naming convention">
+                <Text
+                  value={b.stakeholder}
+                  onChange={set('stakeholder')}
+                  placeholder="Who the campaign belongs to"
+                />
+              </Field>
+              <Field label="Campaign name" hint="carries through to creative and naming">
                 <Text
                   value={b.campaignName}
                   onChange={set('campaignName')}
@@ -565,7 +573,17 @@ export default function IntakeForm() {
               <Field label="Website / landing page">
                 <Text value={b.website} onChange={set('website')} placeholder="example.com" />
               </Field>
-              <Field label="Markets">
+              {/* The geo token is shown as it is typed, because the naming
+                * tool takes it from here and one market reads very
+                * differently to three. */}
+              <Field
+                label="Markets"
+                hint={
+                  b.markets
+                    ? `naming uses ${geoToken(b.markets)} as the geo`
+                    : 'feeds the geo token in naming'
+                }
+              >
                 <Text
                   value={b.markets}
                   onChange={set('markets')}
