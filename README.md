@@ -31,7 +31,6 @@ Listed in the order they are used, which is the order they appear in the nav.
 |---|---|---|
 | LA-01 | Intake — discovery capture with live flags, PDF and Airtable export | |
 | LA-04 | Naming — campaign names and tagged URLs | |
-| LA-06 | Creative — brief the design team, export PDF | |
 | LA-07 | Significance — is the difference real yet | |
 | LA-08 | CSV analysis — drop in a Campaign Manager export | |
 | LA-09 | Retargeting — pool fill times and sequencing | |
@@ -42,11 +41,26 @@ Listed in the order they are used, which is the order they appear in the nav.
 | LA-12 | Live reporting — pull straight from the API | ● |
 | LA-13 | Monitor — budget pacing and frequency | ● |
 | LA-14 | Companies — who actually saw the ads | ● |
+| LA-06 | Brief — brief the design team, export PDF | |
+
+The creative brief sits at the end of the nav beside Saved briefs and Setup
+rather than in the tool list: it is the document the rest of the work is
+handed over in, and it is opened from wherever you happen to be.
 
 The home page is a dashboard rather than a menu: Marken, PCI and GCSG each
-show healthy / flagged / paused counts derived from whatever export was last
-saved against them, and a "Needs looking at" list of every flagged campaign
-across all three.
+show healthy / flagged / paused counts and total spend derived from the
+reports saved against them, a combined spend total across all three, and a
+"Needs looking at" list of every flagged campaign across all three.
+
+Reports are stored per report type, not one per client. A Performance report
+and a Delivery report carry different columns and describe different things,
+so they cannot be merged: the type is read from the export's first metadata
+line, the most recent of each type is kept, and uploading a type that is
+already held replaces only that one. Status counts come from whichever report
+carries a status column and spend from whichever carries spend. The reporting
+page lists what is held per client with the date each was uploaded, and has a
+Reset per client plus a Clear all, for recovering from an export filed against
+the wrong account.
 
 LA-08 and LA-12 do the same analysis. One takes an exported file, the other
 pulls it live. Keep both: the CSV route works on any account you have

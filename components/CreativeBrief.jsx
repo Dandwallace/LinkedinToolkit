@@ -3,6 +3,25 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { loadLogo, drawLogo, LOGO_WIDTH_MM } from '@/lib/pdf-logo';
 import { objectivesOf } from '@/lib/brief';
+import {
+  FORM_LIMITS,
+  MAX_FIELDS,
+  BEST_PRACTICE_FIELDS,
+  MAX_QUESTIONS,
+  MAX_CONSENTS,
+  MAX_HIDDEN,
+  DEFAULT_FIELDS,
+  FIELD_GROUPS,
+  QUESTION_TYPES,
+  CTA_OPTIONS,
+  DELIVERY_OPTIONS,
+  DOCUMENT_SPEC,
+  DELIVERY_WARNING,
+  PRIVACY_NOTE,
+  EMPTY_FORM,
+  fieldCount,
+  formIssues,
+} from '@/lib/leadgen-form';
 
 /* ------------------------------------------------------------------ *
  * Format specifications — verified against published 2026 spec guides.
@@ -59,6 +78,8 @@ const FORMATS = {
       'Ungated, members can read the whole document in the feed.',
       'Gated behind a Lead Gen Form, they see a preview of the first pages, five by default, and fill the form to get the rest. Put the argument in those pages and the payoff behind the form.',
       'A Lead Gen Form cannot be attached to a single-page document, because at least one page has to remain as the preview.',
+      'Front-load the value. Page one is the only page guaranteed to be seen.',
+      'The visual is the document preview itself. There is no form banner image: that is Message Ads, which take a 300x250.',
       'Read-depth is reported, so the document can be segmented on afterwards.',
     ],
     preview: 'feed',
@@ -197,9 +218,25 @@ const nextId = () => `c${++uid}`;
 const truncate = (t, at) =>
   !t ? { shown: '', cut: false } : t.length <= at ? { shown: t, cut: false } : { shown: t.slice(0, at).trimEnd(), cut: true };
 
+/* Formats whose CTA can point at a Lead Gen Form rather than a landing
+ * page. Rail and dynamic formats cannot carry one at all. */
+const FORM_CAPABLE = new Set([
+  'Single image',
+  'Carousel',
+  'Video',
+  'Document',
+  'Message ad',
+  'Conversation ad',
+]);
+
+/* A Document ad is briefed with its form either way: gating it is the
+ * normal case, and the section is what says so when it is not gated. */
+const needsForm = (item) =>
+  item.format === 'Document' || item.ctaDestination === 'Lead Gen Form';
+
 function fieldsFor(item) {
   return FORMATS[item.format].fields.map((f) =>
-    f.dynamic === 'carousel' && item.carouselCta === 'Lead Gen Form'
+    f.dynamic === 'carousel' && item.ctaDestination === 'Lead Gen Form'
       ? { ...f, limit: 30, visible: 30, note: 'Reduced from 45 because the CTA points at a Lead Gen Form' }
       : f
   );
@@ -254,6 +291,225 @@ function buildPdf(jsPDF, brief, items, logo = null) {
     return lines.length * (size * 0.42);
   };
 
+  /** A wrapped paragraph that can break across a page. */
+  const para = (t, { x = M, w = COL, size = 8, colour = [60, 60, 55], style = 'normal' } = {}) => {
+    doc.setFont('helvetica', style).setFontSize(size).setTextColor(...colour);
+    for (const line of doc.splitTextToSize(String(t ?? ''), w)) {
+      need(6);
+      doc.text(line, x, y);
+      y += size * 0.44;
+    }
+  };
+
+  /** Label on the left, value on the right, with an optional count.
+   *
+   * The wrap width is measured at the size the value is drawn at. Measuring
+   * at whatever size was last set produces lines wider than the column, and
+   * they run straight through the count on the right. */
+  const specLine = (k, v, right = null) => {
+    const value = String(v ?? '').trim();
+    doc.setFont('helvetica', 'normal').setFontSize(8.5);
+    const lines = doc.splitTextToSize(value || 'to be written', COL - 42 - 30);
+    need(lines.length * 3.6 + 6);
+    doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...GREY);
+    doc.text(k, M, y);
+    doc.setFontSize(8.5);
+    if (value) doc.setTextColor(20, 20, 18);
+    else doc.setTextColor(150, 150, 145);
+    doc.text(lines, M + 42, y);
+    if (right) {
+      doc.setFont('helvetica', 'normal').setFontSize(7).setTextColor(...GREY);
+      doc.text(right, RIGHT, y, { align: 'right' });
+    }
+    y += Math.max(4.5, lines.length * 3.6) + 1.2;
+    rule(0.15, [210, 208, 198]);
+    y += 2.6;
+  };
+
+  const subLabel = (t, right = null) => {
+    need(10);
+    y += 2;
+    label(t);
+    if (right) {
+      doc.setFont('helvetica', 'normal').setFontSize(7).setTextColor(...GREY);
+      doc.text(right, RIGHT, y, { align: 'right' });
+    }
+    y += 2.5;
+    rule(0.25, [140, 138, 128]);
+    y += 4;
+  };
+
+  const flagList = (list) => {
+    for (const n of list) {
+      doc.setFont('helvetica', 'bold').setFontSize(7.5);
+      doc.setTextColor(...(n.level === 'blocker' ? RED : GREY));
+      const w = doc.getTextWidth(`${n.field}: `);
+      const lines = doc.splitTextToSize(n.text, COL - w);
+      need(lines.length * 3.4 + 4);
+      doc.setFont('helvetica', 'bold').setFontSize(7.5);
+      doc.setTextColor(...(n.level === 'blocker' ? RED : GREY));
+      doc.text(`${n.field}:`, M, y);
+      doc.setFont('helvetica', 'normal').setTextColor(60, 60, 55);
+      doc.text(lines, M + w, y);
+      y += lines.length * 3.4 + 1.5;
+    }
+  };
+
+  /**
+   * The Lead Gen Form behind a creative.
+   *
+   * Everything the form needs, including the limits, so the page can be
+   * handed to a copywriter on its own. The delivery warning is drawn first
+   * and in red because it is the failure that costs the client the leads
+   * rather than the campaign a day.
+   */
+  const drawForm = (item) => {
+    const f = item.form || EMPTY_FORM;
+    const flags = formIssues(f);
+    const count = (v, limit) => `${String(v || '').length} / ${limit}`;
+
+    need(40);
+    y += 3;
+    rule(0.4, [20, 20, 18]);
+    y += 5.5;
+    doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(...NAVY);
+    doc.text('Lead Gen Form', M, y);
+    doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...GREY);
+    doc.text(
+      item.format === 'Document' ? 'gates the document' : 'the CTA points here',
+      RIGHT,
+      y,
+      { align: 'right' }
+    );
+    y += 6;
+
+    /* ---- the blocker ---- */
+    const warn = doc.splitTextToSize(DELIVERY_WARNING.body, COL - 8);
+    need(warn.length * 3.4 + 12);
+    const boxH = warn.length * 3.4 + 10;
+    doc.setFillColor(249, 237, 233).rect(M, y - 4.5, COL, boxH, 'F');
+    doc.setFillColor(...RED).rect(M, y - 4.5, 1.3, boxH, 'F');
+    doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(...RED);
+    doc.text(DELIVERY_WARNING.title.toUpperCase(), M + 4, y, { charSpace: 0.3 });
+    y += 4.2;
+    doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(90, 55, 40);
+    doc.text(warn, M + 4, y);
+    y += warn.length * 3.4 + 6;
+
+    /* ---- setup ---- */
+    subLabel('Form setup');
+    specLine('Form name', f.name, count(f.name, FORM_LIMITS.name));
+    specLine('Language', f.language, 'match campaign');
+    specLine('Offer headline', f.offerHeadline, count(f.offerHeadline, FORM_LIMITS.offerHeadline));
+    specLine(
+      'Offer details',
+      f.offerDetails,
+      `${String(f.offerDetails || '').length} / ${FORM_LIMITS.offerDetailsVisible} · max ${FORM_LIMITS.offerDetails}`
+    );
+
+    /* ---- fields ---- */
+    subLabel('Fields to collect', `${fieldCount(f)} of ${MAX_FIELDS}`);
+    para(
+      `Maximum ${MAX_FIELDS} fields, and custom questions count towards that. LinkedIn's own best practice is 3 to 4: every field past the fourth costs completions. First name, last name and email address are selected by default and can be unselected. Work email is a separate field from email address and is the one that matters for B2B.`
+    );
+    y += 2;
+    para(f.fields.length ? f.fields.join(', ') : 'none selected', {
+      size: 8.5,
+      colour: [20, 20, 18],
+    });
+    y += 3;
+
+    /* ---- custom questions ---- */
+    subLabel('Custom questions', `${f.questions.length} of ${MAX_QUESTIONS}`);
+    para(
+      `Up to ${MAX_QUESTIONS}, ${FORM_LIMITS.question} characters each, single-line text or multiple choice. They count towards the ${MAX_FIELDS} field maximum.`
+    );
+    y += 2;
+    if (!f.questions.length) {
+      para('None.', { colour: [150, 150, 145] });
+    } else {
+      f.questions.forEach((q, i) =>
+        specLine(
+          `${i + 1}. ${q.type}`,
+          q.text,
+          count(q.text, FORM_LIMITS.question)
+        )
+      );
+    }
+    y += 2;
+
+    /* ---- consent ---- */
+    subLabel('Consent and opt-out', `${f.consents.length} of ${MAX_CONSENTS}`);
+    para(
+      `Up to ${MAX_CONSENTS} custom checkboxes, ${FORM_LIMITS.consent} characters each, each required or optional. They do not count towards the ${MAX_FIELDS} field maximum. Marketing opt-in and any additional consent goes here.`
+    );
+    y += 2;
+    if (!f.consents.length) {
+      para('None.', { colour: [150, 150, 145] });
+    } else {
+      f.consents.forEach((c, i) =>
+        specLine(
+          `${i + 1}. ${c.required ? 'Required' : 'Optional'}`,
+          c.text,
+          count(c.text, FORM_LIMITS.consent)
+        )
+      );
+    }
+    y += 2;
+
+    /* ---- privacy ---- */
+    subLabel('Data privacy');
+    specLine('Privacy policy URL', f.privacyUrl, 'https:// required');
+    specLine('Privacy policy text', f.privacyText, count(f.privacyText, FORM_LIMITS.privacyText));
+    para(`${PRIVACY_NOTE.title}. ${PRIVACY_NOTE.body}`);
+    y += 3;
+
+    /* ---- confirmation ---- */
+    subLabel('Confirmation screen');
+    specLine('Thank you message', f.thankYou, count(f.thankYou, FORM_LIMITS.thankYou));
+    specLine('Landing page URL', f.landingUrl, count(f.landingUrl, FORM_LIMITS.landingUrl));
+    specLine('Call to action', f.cta, `dropdown · ${FORM_LIMITS.cta} max`);
+    const delivery =
+      DELIVERY_OPTIONS.find((d) => d.key === f.delivery) || DELIVERY_OPTIONS[0];
+    specLine('Delivery', delivery.key, null);
+    para(delivery.detail);
+    y += 3;
+
+    /* ---- hidden fields ---- */
+    subLabel('Hidden fields', `${f.hidden.length} of ${MAX_HIDDEN}`);
+    para(
+      `Up to ${MAX_HIDDEN}, for tracking values such as campaign or source. Not shown to members, and they collect no additional personal data.`
+    );
+    y += 2;
+    para(
+      f.hidden.length
+        ? f.hidden.map((h) => `${h.name || 'unnamed'} = ${h.value || 'to be set'}`).join(', ')
+        : 'None.',
+      { colour: f.hidden.length ? [20, 20, 18] : [150, 150, 145] }
+    );
+    y += 3;
+
+    /* ---- the document ---- */
+    if (item.format === 'Document') {
+      subLabel('The document itself');
+      specLine('File types', DOCUMENT_SPEC.types);
+      specLine('Max file size', DOCUMENT_SPEC.size);
+      specLine('Length', DOCUMENT_SPEC.pages);
+      for (const n of DOCUMENT_SPEC.notes) para(`•  ${n}`);
+      y += 1;
+      para(
+        'There is no form banner image. The visual on a Document ad is the document preview itself. A 300x250 banner belongs to Message Ads, not to Lead Gen Forms.'
+      );
+      y += 3;
+    }
+
+    if (flags.length) {
+      subLabel('Form flags', `${flags.filter((n) => n.level === 'blocker').length} blocking`);
+      flagList(flags);
+      y += 2;
+    }
+  };
+
   /* ---- header ---- */
   y = 20;
   drawLogo(doc, logo, { x: RIGHT - LOGO_WIDTH_MM, y: y - 6 });
@@ -294,13 +550,6 @@ function buildPdf(jsPDF, brief, items, logo = null) {
     y += 4;
     doc.setFont('helvetica', 'normal').setFontSize(9);
     y += body(brief.notes, M, COL, 9);
-    y += 6;
-  }
-  if (brief.copyNotes) {
-    label('Copy direction');
-    y += 4;
-    doc.setFont('helvetica', 'normal').setFontSize(9);
-    y += body(brief.copyNotes, M, COL, 9);
     y += 6;
   }
   /* The objective changes what LinkedIn renders around the ad, so the
@@ -376,7 +625,7 @@ function buildPdf(jsPDF, brief, items, logo = null) {
       ['Max file size', s.asset.size],
       ['File types', s.asset.types],
       ...(s.asset.extra ? [['Also', s.asset.extra]] : []),
-      ...(item.format === 'Carousel' ? [['CTA destination', item.carouselCta]] : []),
+      ...(FORM_CAPABLE.has(item.format) ? [['CTA destination', item.ctaDestination]] : []),
     ];
     for (const [k, v] of specRows) {
       doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(...GREY);
@@ -450,18 +699,14 @@ function buildPdf(jsPDF, brief, items, logo = null) {
       y += 1;
       label('Flags');
       y += 4;
-      for (const n of iss) {
-        doc.setFont('helvetica', 'bold').setFontSize(7.5);
-        doc.setTextColor(...(n.level === 'blocker' ? RED : GREY));
-        doc.text(`${n.field}:`, M, y);
-        const w = doc.getTextWidth(`${n.field}: `);
-        doc.setFont('helvetica', 'normal').setTextColor(60, 60, 55);
-        const lines = doc.splitTextToSize(n.text, COL - w);
-        doc.text(lines, M + w, y);
-        y += lines.length * 3.4 + 1.5;
-      }
+      flagList(iss);
       y += 3;
     }
+
+    /* The form is half the brief on a Document ad, so it prints with the
+     * creative it belongs to rather than as an appendix. */
+    if (needsForm(item)) drawForm(item);
+
     y += 4;
   });
 
@@ -482,6 +727,19 @@ function buildPdf(jsPDF, brief, items, logo = null) {
 
 /* ------------------------------------------------------------------ */
 
+/** A new creative. Document ads start gated, which is the normal case. */
+function newItem(format) {
+  return {
+    id: nextId(),
+    format,
+    copy: {},
+    ctaDestination: format === 'Document' ? 'Lead Gen Form' : 'Landing page',
+    quantity: 1,
+    notes: '',
+    form: { ...EMPTY_FORM, fields: [...DEFAULT_FIELDS] },
+  };
+}
+
 export default function CreativeBrief() {
   const [brief, setBrief] = useState({
     client: '',
@@ -489,10 +747,9 @@ export default function CreativeBrief() {
     objective: OBJECTIVES[0],
     deadline: '',
     notes: '',
-    copyNotes: '',
   });
   const [items, setItems] = useState([
-    { id: nextId(), format: 'Single image', copy: {}, carouselCta: 'Landing page', quantity: 1, notes: '' },
+    newItem('Single image'),
   ]);
   const [activeId, setActiveId] = useState(null);
 
@@ -516,12 +773,8 @@ export default function CreativeBrief() {
         const picks = (b.creatives || []).filter((c) => FORMATS[c.format]);
         if (picks.length) {
           const seeded = picks.map((c) => ({
-            id: nextId(),
-            format: c.format,
-            copy: {},
-            carouselCta: 'Landing page',
+            ...newItem(c.format),
             quantity: Math.min(20, Math.max(1, Number(c.quantity) || 1)),
-            notes: '',
           }));
           setItems(seeded);
           setActiveId(seeded[0].id);
@@ -537,7 +790,7 @@ export default function CreativeBrief() {
     setItems((p) => p.map((i) => (i.id === id ? { ...i, quantity: Math.min(20, Math.max(1, i.quantity + delta)) } : i)));
 
   const addItem = (format) => {
-    const it = { id: nextId(), format, copy: {}, carouselCta: 'Landing page', quantity: 1, notes: '' };
+    const it = newItem(format);
     setItems((p) => [...p, it]);
     setActiveId(it.id);
   };
@@ -549,16 +802,51 @@ export default function CreativeBrief() {
     });
   const duplicateItem = (id) => {
     const src = items.find((i) => i.id === id);
-    const c = { ...src, id: nextId(), copy: { ...src.copy } };
+    const c = {
+      ...src,
+      id: nextId(),
+      copy: { ...src.copy },
+      form: { ...src.form, fields: [...src.form.fields] },
+    };
     setItems((p) => [...p, c]);
     setActiveId(c.id);
   };
 
+  /* ---- the Lead Gen Form on the active creative ---- */
+  const setForm = (id, patch) =>
+    setItems((p) => p.map((i) => (i.id === id ? { ...i, form: { ...i.form, ...patch } } : i)));
+  const toggleFormField = (id, field) =>
+    setItems((p) =>
+      p.map((i) =>
+        i.id === id
+          ? {
+              ...i,
+              form: {
+                ...i.form,
+                fields: i.form.fields.includes(field)
+                  ? i.form.fields.filter((f) => f !== field)
+                  : [...i.form.fields, field],
+              },
+            }
+          : i
+      )
+    );
+  const setList = (id, key, list) => setForm(id, { [key]: list });
+
   const totalAssets = items.reduce((n, i) => n + (Number(i.quantity) || 0), 0);
-  const blockerCount = items.reduce((n, i) => n + issuesFor(i).filter((x) => x.level === 'blocker').length, 0);
+  const blockerCount = items.reduce(
+    (n, i) =>
+      n +
+      issuesFor(i).filter((x) => x.level === 'blocker').length +
+      (needsForm(i) ? formIssues(i.form).filter((x) => x.level === 'blocker').length : 0),
+    0
+  );
   const activeFields = active ? fieldsFor(active) : [];
   const activeIssues = active ? issuesFor(active) : [];
   const spec = active ? FORMATS[active.format] : null;
+  const formNeeded = active ? needsForm(active) : false;
+  const form = active?.form || EMPTY_FORM;
+  const formFlags = formNeeded ? formIssues(form) : [];
   const introT = active ? truncate(active.copy.intro, activeFields.find((f) => f.key === 'intro')?.visible ?? 150) : { shown: '', cut: false };
   const headT = active ? truncate(active.copy.headline, activeFields.find((f) => f.key === 'headline')?.visible ?? 70) : { shown: '', cut: false };
 
@@ -636,15 +924,6 @@ export default function CreativeBrief() {
                   <textarea className="ta" rows={3} value={brief.notes}
                     placeholder="Brand guidelines, art direction, imagery to use or avoid…"
                     onChange={(e) => setBrief((p) => ({ ...p, notes: e.target.value }))} /></label>
-                <label className="stack">
-                  <span className="row-label">Copy direction</span>
-                  <span className="row-hint">
-                    For whoever writes the words. Proposition, tone of voice, claims that are
-                    allowed, terms that are not.
-                  </span>
-                  <textarea className="ta" rows={3} value={brief.copyNotes || ''}
-                    placeholder="Proposition, tone, approved claims, words to avoid…"
-                    onChange={(e) => setBrief((p) => ({ ...p, copyNotes: e.target.value }))} /></label>
               </div>
             </section>
 
@@ -693,12 +972,12 @@ export default function CreativeBrief() {
               <section className="grp">
                 <h2 className="grp-head"><span className="grp-letter">C</span>{active.format}</h2>
                 <div className="grp-body">
-                  {active.format === 'Carousel' && (
+                  {FORM_CAPABLE.has(active.format) && (
                     <div className="cta-toggle">
                       <span className="row-label">CTA destination</span>
                       {['Landing page', 'Lead Gen Form'].map((o) => (
-                        <button key={o} type="button" className={active.carouselCta === o ? 'ct on' : 'ct'}
-                          onClick={() => setItem(active.id, { carouselCta: o })}>{o}</button>
+                        <button key={o} type="button" className={active.ctaDestination === o ? 'ct on' : 'ct'}
+                          onClick={() => setItem(active.id, { ctaDestination: o })}>{o}</button>
                       ))}
                     </div>
                   )}
@@ -771,6 +1050,16 @@ export default function CreativeBrief() {
                       onChange={(e) => setItem(active.id, { notes: e.target.value })} /></label>
                 </div>
               </section>
+            )}
+
+            {active && formNeeded && (
+              <LeadGenSection
+                item={active}
+                flags={formFlags}
+                setForm={(patch) => setForm(active.id, patch)}
+                toggleField={(f) => toggleFormField(active.id, f)}
+                setList={(key, list) => setList(active.id, key, list)}
+              />
             )}
           </div>
 
@@ -895,7 +1184,8 @@ export default function CreativeBrief() {
 
                 <p className="disclaimer">
                   Specs verified against 2026 sources. The PDF carries every creative, its specs,
-                  the copy with character counts, and any flags.
+                  the copy with character counts, the Lead Gen Form where there is one, and any
+                  flags.
                 </p>
               </>
             )}
@@ -903,6 +1193,390 @@ export default function CreativeBrief() {
         </div>
       </div>
     </>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Lead Gen Form
+ *
+ * A Document ad has two things to brief and this is the second. Every
+ * figure here is LinkedIn's own, counted live the same way the ad copy
+ * fields are, because a form that will not save is found at build time
+ * rather than at brief time otherwise.
+ * ------------------------------------------------------------------ */
+
+/** One counted field. Same counter behaviour as the ad copy fields. */
+function Counted({ label, value, onChange, limit, visible, rows = 1, placeholder, hint }) {
+  const n = String(value || '').length;
+  const over = n > limit;
+  const past = !over && visible && visible < limit && n > visible;
+  return (
+    <div className="fld">
+      <div className="fld-top">
+        <span className="fld-label">{label}</span>
+        <span className={`count${over ? ' over' : past ? ' past' : ''}`}>
+          {n}
+          <em>
+            /{visible || limit}
+            {visible && visible !== limit ? ` · max ${limit}` : ''}
+          </em>
+        </span>
+      </div>
+      <textarea
+        className={`ta${over ? ' over' : ''}`}
+        rows={rows}
+        value={value || ''}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {hint && <p className="fld-note">{hint}</p>}
+    </div>
+  );
+}
+
+function SubHead({ children, note }) {
+  return (
+    <div className="subhead">
+      {children}
+      {note && <span className="subhead-note">{note}</span>}
+    </div>
+  );
+}
+
+function LeadGenSection({ item, flags, setForm, toggleField, setList }) {
+  const f = item.form;
+  const used = fieldCount(f);
+  const delivery = DELIVERY_OPTIONS.find((d) => d.key === f.delivery) || DELIVERY_OPTIONS[0];
+
+  const addQuestion = () =>
+    setList('questions', [...f.questions, { text: '', type: QUESTION_TYPES[0] }]);
+  const setQuestion = (i, patch) =>
+    setList('questions', f.questions.map((q, n) => (n === i ? { ...q, ...patch } : q)));
+  const delQuestion = (i) => setList('questions', f.questions.filter((_, n) => n !== i));
+
+  const addConsent = () => setList('consents', [...f.consents, { text: '', required: false }]);
+  const setConsent = (i, patch) =>
+    setList('consents', f.consents.map((c, n) => (n === i ? { ...c, ...patch } : c)));
+  const delConsent = (i) => setList('consents', f.consents.filter((_, n) => n !== i));
+
+  const addHidden = () => setList('hidden', [...f.hidden, { name: '', value: '' }]);
+  const setHidden = (i, patch) =>
+    setList('hidden', f.hidden.map((h, n) => (n === i ? { ...h, ...patch } : h)));
+  const delHidden = (i) => setList('hidden', f.hidden.filter((_, n) => n !== i));
+
+  return (
+    <section className="grp">
+      <h2 className="grp-head">
+        <span className="grp-letter">D</span>Lead Gen Form
+        <span className="grp-note">
+          {item.format === 'Document' ? 'gates the document' : 'the CTA points here'}
+        </span>
+      </h2>
+      <div className="grp-body">
+        {/* The failure nobody expects, stated before anything is written. */}
+        <div className="genblock pre">
+          <div className="genblock-head">{DELIVERY_WARNING.title}</div>
+          <p className="genblock-body">{DELIVERY_WARNING.body}</p>
+        </div>
+
+        <SubHead note="internal name, offer copy">Form setup</SubHead>
+        <Counted
+          label="Form name"
+          value={f.name}
+          onChange={(v) => setForm({ name: v })}
+          limit={FORM_LIMITS.name}
+          placeholder="client_asset_audience_geo_period"
+          hint="Internal only. Forms are account-level assets reused across campaigns, so this follows the form naming convention."
+        />
+        <label className="row">
+          <span className="row-label">Language</span>
+          <input
+            className="inp"
+            value={f.language}
+            placeholder="English"
+            onChange={(e) => setForm({ language: e.target.value })}
+          />
+        </label>
+        <Counted
+          label="Offer headline"
+          value={f.offerHeadline}
+          onChange={(v) => setForm({ offerHeadline: v })}
+          limit={FORM_LIMITS.offerHeadline}
+          rows={2}
+          placeholder="What they get, in one line"
+          hint="Cannot be blank."
+        />
+        <Counted
+          label="Offer details"
+          value={f.offerDetails}
+          onChange={(v) => setForm({ offerDetails: v })}
+          limit={FORM_LIMITS.offerDetails}
+          visible={FORM_LIMITS.offerDetailsVisible}
+          rows={3}
+          placeholder="Optional supporting line"
+          hint={`Optional. Hard limit ${FORM_LIMITS.offerDetails}, but it truncates past roughly ${FORM_LIMITS.offerDetailsVisible}, so write to that.`}
+        />
+
+        <SubHead note={`${used} of ${MAX_FIELDS} used`}>Fields to collect</SubHead>
+        <p className="row-hint">
+          Maximum {MAX_FIELDS}, and custom questions count towards it. LinkedIn's own best
+          practice is 3 to 4: every field past the fourth costs completions. First name, last
+          name and email address are selected by default and can be unselected.
+        </p>
+        {FIELD_GROUPS.map((g) => (
+          <div className="fgroup" key={g.title}>
+            <div className="fgroup-head">{g.title}</div>
+            <div className="ticks">
+              {g.fields.map((name) => {
+                const on = f.fields.includes(name);
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    className={on ? 'tick on' : 'tick'}
+                    onClick={() => toggleField(name)}
+                    aria-pressed={on}
+                  >
+                    <span className="tick-box">{on ? '×' : ''}</span>
+                    {name}
+                    {name === 'Work email' && <em className="tick-note">B2B</em>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+
+        <SubHead note={`${f.questions.length} of ${MAX_QUESTIONS}`}>Custom questions</SubHead>
+        <p className="row-hint">
+          Up to {MAX_QUESTIONS}, {FORM_LIMITS.question} characters each, single-line text or
+          multiple choice. They count towards the {MAX_FIELDS} field maximum.
+        </p>
+        {f.questions.map((q, i) => (
+          <div className="listrow" key={i}>
+            <Counted
+              label={`Question ${i + 1}`}
+              value={q.text}
+              onChange={(v) => setQuestion(i, { text: v })}
+              limit={FORM_LIMITS.question}
+              rows={2}
+            />
+            <div className="listrow-foot">
+              <select
+                className="inp sel"
+                value={q.type}
+                onChange={(e) => setQuestion(i, { type: e.target.value })}
+              >
+                {QUESTION_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+              <button type="button" className="mini del" onClick={() => delQuestion(i)}>
+                Remove
+              </button>
+            </div>
+          </div>
+        ))}
+        {f.questions.length < MAX_QUESTIONS && (
+          <button type="button" className="chip" onClick={addQuestion}>
+            + Add question
+          </button>
+        )}
+
+        <SubHead note={`${f.consents.length} of ${MAX_CONSENTS}`}>Consent and opt-out</SubHead>
+        <p className="row-hint">
+          Up to {MAX_CONSENTS} custom checkboxes, {FORM_LIMITS.consent} characters each, and each
+          can be required or optional. They do not count towards the {MAX_FIELDS} field maximum.
+          Marketing opt-in and any additional consent goes here.
+        </p>
+        {f.consents.map((c, i) => (
+          <div className="listrow" key={i}>
+            <Counted
+              label={`Checkbox ${i + 1}`}
+              value={c.text}
+              onChange={(v) => setConsent(i, { text: v })}
+              limit={FORM_LIMITS.consent}
+              rows={3}
+            />
+            <div className="listrow-foot">
+              {['Required', 'Optional'].map((o) => (
+                <button
+                  key={o}
+                  type="button"
+                  className={(o === 'Required') === Boolean(c.required) ? 'ct on' : 'ct'}
+                  onClick={() => setConsent(i, { required: o === 'Required' })}
+                >
+                  {o}
+                </button>
+              ))}
+              <button type="button" className="mini del" onClick={() => delConsent(i)}>
+                Remove
+              </button>
+            </div>
+          </div>
+        ))}
+        {f.consents.length < MAX_CONSENTS && (
+          <button type="button" className="chip" onClick={addConsent}>
+            + Add checkbox
+          </button>
+        )}
+
+        <SubHead note="mandatory">Data privacy</SubHead>
+        <label className="row">
+          <span className="row-label">Privacy policy URL</span>
+          <input
+            className="inp wide"
+            value={f.privacyUrl}
+            placeholder="https://example.com/privacy"
+            onChange={(e) => setForm({ privacyUrl: e.target.value })}
+          />
+        </label>
+        <Counted
+          label="Privacy policy text"
+          value={f.privacyText}
+          onChange={(v) => setForm({ privacyText: v })}
+          limit={FORM_LIMITS.privacyText}
+          rows={3}
+          placeholder="Optional wording shown with the policy link"
+        />
+        <div className="genblock">
+          <div className="genblock-head">{PRIVACY_NOTE.title}</div>
+          <p className="genblock-body">{PRIVACY_NOTE.body}</p>
+        </div>
+
+        <SubHead note="what they see after submitting">Confirmation screen</SubHead>
+        <Counted
+          label="Thank you message"
+          value={f.thankYou}
+          onChange={(v) => setForm({ thankYou: v })}
+          limit={FORM_LIMITS.thankYou}
+          rows={3}
+          hint="Cannot be blank."
+        />
+        <label className="row">
+          <span className="row-label">Landing page URL</span>
+          <input
+            className="inp wide"
+            value={f.landingUrl}
+            placeholder="https://example.com/report.pdf"
+            onChange={(e) => setForm({ landingUrl: e.target.value })}
+          />
+        </label>
+        <label className="row">
+          <span className="row-label">Call to action</span>
+          <select
+            className="inp sel"
+            value={f.cta}
+            onChange={(e) => setForm({ cta: e.target.value })}
+          >
+            {CTA_OPTIONS.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="row-hint">
+          The call to action is a dropdown, {FORM_LIMITS.cta} characters, and it links to the
+          landing page URL. That URL is capped at {FORM_LIMITS.landingUrl.toLocaleString('en-GB')}{' '}
+          characters and cannot be blank.
+        </p>
+
+        <SubHead>Download now, or move to a landing page</SubHead>
+        <div className="cta-toggle">
+          {DELIVERY_OPTIONS.map((o) => (
+            <button
+              key={o.key}
+              type="button"
+              className={f.delivery === o.key ? 'ct on' : 'ct'}
+              onClick={() => setForm({ delivery: o.key })}
+            >
+              {o.key}
+            </button>
+          ))}
+        </div>
+        <p className="row-hint">{delivery.detail}</p>
+
+        <SubHead note={`${f.hidden.length} of ${MAX_HIDDEN}`}>Hidden fields</SubHead>
+        <p className="row-hint">
+          Up to {MAX_HIDDEN}, for tracking values such as campaign or source. They are not shown
+          to members and collect no additional personal data.
+        </p>
+        {f.hidden.map((h, i) => (
+          <div className="hidrow" key={i}>
+            <input
+              className="inp"
+              value={h.name}
+              placeholder="name"
+              onChange={(e) => setHidden(i, { name: e.target.value })}
+            />
+            <input
+              className="inp"
+              value={h.value}
+              placeholder="value"
+              onChange={(e) => setHidden(i, { value: e.target.value })}
+            />
+            <button type="button" className="mini del" onClick={() => delHidden(i)}>
+              ×
+            </button>
+          </div>
+        ))}
+        {f.hidden.length < MAX_HIDDEN && (
+          <button type="button" className="chip" onClick={addHidden}>
+            + Add hidden field
+          </button>
+        )}
+
+        {item.format === 'Document' && (
+          <>
+            <SubHead note="what the designer produces">The document itself</SubHead>
+            <table className="tbl">
+              <tbody>
+                <tr>
+                  <th>File types</th>
+                  <td>{DOCUMENT_SPEC.types}</td>
+                </tr>
+                <tr>
+                  <th>Max file size</th>
+                  <td>{DOCUMENT_SPEC.size}</td>
+                </tr>
+                <tr>
+                  <th>Length</th>
+                  <td>{DOCUMENT_SPEC.pages}</td>
+                </tr>
+              </tbody>
+            </table>
+            <ul className="notes">
+              {DOCUMENT_SPEC.notes.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+            <p className="row-hint">
+              There is no form banner image. The visual on a Document ad is the document preview
+              itself. A 300x250 banner belongs to Message Ads, not to Lead Gen Forms.
+            </p>
+          </>
+        )}
+
+        {flags.length > 0 && (
+          <>
+            <SubHead note={`${flags.filter((x) => x.level === 'blocker').length} blocking`}>
+              Form flags
+            </SubHead>
+            <ul className="issues flat">
+              {flags.map((n, i) => (
+                <li key={i} className={`issue ${n.level}`}>
+                  <span className="issue-tag">{n.field}</span>
+                  {n.text}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -989,6 +1663,35 @@ const CSS = `
 .dyn-desc{font-size:11.5px;color:#5C5F57;line-height:1.45;margin-top:4px;word-break:break-word;}
 .dyn-cta{margin-top:11px;font-size:12px;font-weight:600;color:#fff;background:#0A66C2;
   border:none;border-radius:15px;padding:6px 20px;}
+/* ---- lead gen form ---- */
+.subhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  flex-wrap:wrap;margin:18px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--rule);
+  font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:11px;
+  letter-spacing:.13em;text-transform:uppercase;color:var(--carbon);}
+.subhead-note{font-family:'Courier Prime',monospace;font-size:10.5px;letter-spacing:0;
+  text-transform:none;font-weight:400;color:var(--ink-2);}
+.fgroup{margin-bottom:10px;}
+.fgroup-head{font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:9px;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2);margin-bottom:4px;}
+.ticks{display:flex;flex-wrap:wrap;gap:4px 14px;}
+.tick{display:inline-flex;align-items:center;gap:6px;font-family:'Archivo',sans-serif;
+  font-size:12px;color:var(--ink-2);background:none;border:none;padding:2px 0;cursor:pointer;}
+.tick-box{width:14px;height:14px;flex:none;border:1px solid var(--rule);background:var(--white);
+  font-family:'Courier Prime',monospace;font-size:13px;line-height:12px;color:var(--carbon);
+  text-align:center;}
+.tick.on{color:var(--ink);}
+.tick.on .tick-box{border-color:var(--carbon);}
+.tick:focus-visible{outline:2px solid var(--carbon);outline-offset:2px;}
+.tick-note{font-style:normal;font-family:'Archivo Narrow',sans-serif;font-weight:700;
+  font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--stamp);
+  border:1px solid var(--stamp);padding:0 4px;}
+.listrow{border-left:2px solid var(--rule);padding-left:10px;margin-bottom:10px;}
+.listrow-foot{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:-6px;}
+.hidrow{display:flex;gap:6px;align-items:center;margin-bottom:6px;}
+.hidrow .inp{flex:1;text-align:left;width:auto;}
+.inp.wide{width:100%;text-align:left;}
+.sel{cursor:pointer;text-align:left;width:auto;font-size:12.5px;}
+.issues.flat{margin-top:2px;}
 .fld{margin-bottom:14px;}
 .fld-top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px;}
 .fld-label{font-family:'Archivo Narrow',sans-serif;font-weight:600;font-size:11px;

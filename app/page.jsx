@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { TOOLS, API_TOOLS } from '@/lib/tools';
+import { TOOLS, API_TOOLS, TOOL_COUNT } from '@/lib/tools';
 import {
   CLIENTS,
   STATES,
@@ -62,7 +62,7 @@ export default function Home() {
   return (
     <div className="index">
       <h1>LinkedIn Ads Toolkit</h1>
-      <p className="index-sub">{TOOLS.length + API_TOOLS.length} tools</p>
+      <p className="index-sub">{TOOL_COUNT} tools</p>
 
       {/* ---------------- across every client ---------------- */}
       {anyData && (
