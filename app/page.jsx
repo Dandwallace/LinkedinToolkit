@@ -9,6 +9,8 @@ import {
   loadAllClients,
   flaggedAcrossClients,
   activeByGroup,
+  combineClients,
+  money,
 } from '@/lib/client-store';
 import ToolIcon from '@/components/ToolIcon';
 
@@ -35,9 +37,13 @@ const emptyCounts = () => ({
   pct: Object.fromEntries(STATES.map((s) => [s, 0])),
 });
 
+/* The three states worth a headline. Building and complete are real, but
+ * they are not what anybody opens this page to find out. */
+const HERO_STATES = ['healthy', 'flagged', 'paused'];
+
 export default function Home() {
   const [clients, setClients] = useState(() =>
-    CLIENTS.map((c) => ({ ...c, data: null, counts: emptyCounts() }))
+    CLIENTS.map((c) => ({ ...c, data: null, counts: emptyCounts(), spend: 0 }))
   );
   const [flagged, setFlagged] = useState([]);
   const [ready, setReady] = useState(false);
@@ -51,11 +57,36 @@ export default function Home() {
   }, []);
 
   const anyData = clients.some((c) => c.data);
+  const all = combineClients(clients);
 
   return (
     <div className="index">
       <h1>LinkedIn Ads Toolkit</h1>
       <p className="index-sub">{TOOLS.length + API_TOOLS.length} tools</p>
+
+      {/* ---------------- across every client ---------------- */}
+      {anyData && (
+        <div className="hero">
+          <dl className="hero-counts">
+            {HERO_STATES.map((s) => (
+              <div className={`hero-count ${s}`} key={s}>
+                <dt>{STATE_LABEL[s]}</dt>
+                <dd>{all[s]}</dd>
+              </div>
+            ))}
+            {/* Spend sits in the same row as the counts because it is read
+              * in the same glance: how much is running, and what it costs. */}
+            <div className="hero-count spend">
+              <dt>Total spend</dt>
+              <dd>{money(all.spend)}</dd>
+            </div>
+          </dl>
+          <p className="hero-note">
+            Across {clients.filter((c) => c.data).length} of {clients.length} clients, from
+            whichever uploaded report carries each figure.
+          </p>
+        </div>
+      )}
 
       {/* ---------------- clients ---------------- */}
       <h2 className="index-group">Clients</h2>
@@ -176,6 +207,22 @@ function ClientCard({ client, ready }) {
       {/* unit level */}
       <Level label={has ? labels.unit : 'Campaigns'} counts={counts} />
 
+      {/* A Delivery export carries spend but no status column, so the
+        * counts stay at zero. Say why rather than looking like a failure. */}
+      {data && !data.statusReport && (
+        <p className="cl-nostatus">
+          None of the uploaded reports carries campaign status, so the counts stay empty. A
+          Performance report fills them.
+        </p>
+      )}
+
+      {/* Spend sits directly under the counts: it is the other number you
+        * want off the card without opening anything. */}
+      <div className="cl-spend">
+        <span className="cl-spend-lab">Total spend</span>
+        <span className="cl-spend-val">{data ? money(client.spend) : 'no data'}</span>
+      </div>
+
       {activeCount > 0 && (
         <div className="cl-active">
           <button
@@ -221,8 +268,16 @@ function ClientCard({ client, ready }) {
             {data.from && data.to ? `${data.from} to ${data.to}` : 'No dates in export'}
             {' · '}
             {data.granularity}
-            {' · '}
-            uploaded {new Date(data.savedAt).toLocaleDateString('en-GB')}
+            {/* Each report type held, with its own upload date, because one
+              * can be weeks staler than the next and nothing else says so. */}
+            <ul className="cl-reports">
+              {data.reports.map((r) => (
+                <li key={r.type}>
+                  <span className="cl-report-type">{r.type}</span>
+                  {new Date(r.savedAt).toLocaleDateString('en-GB')}
+                </li>
+              ))}
+            </ul>
           </>
         ) : ready ? (
           <Link href="/reporting">Upload an export</Link>
