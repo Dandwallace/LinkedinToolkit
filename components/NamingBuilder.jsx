@@ -45,52 +45,55 @@ const LEVELS = [
     key: 'campaign',
     label: 'Campaign',
     aka: 'the group. LinkedIn used to call this the Campaign Group',
-    order: ['client', 'stakeholder', 'campaignName', 'market', 'objective', 'period'],
+    order: ['client', 'campaignName', 'objective', 'stakeholder', 'period'],
     defaults: {
       client: true,
-      stakeholder: true,
       campaignName: true,
-      market: true,
       objective: true,
+      stakeholder: true,
       period: true,
     },
-    note: 'One per objective. Everything below inherits its budget and schedule.',
+    note: 'Client, campaign, objective, stakeholder, then the flight as MM/YY-MM/YY.',
   },
   {
     key: 'adset',
     label: 'Campaign Ad Set',
     aka: 'what LinkedIn used to call the Campaign, and what actually spends',
-    order: ['client', 'campaignName', 'market', 'objective', 'audience', 'format', 'variant', 'period'],
-    defaults: { market: true, audience: true, format: true, period: true },
-    note: 'One per audience. This is the rung you will filter reporting by.',
+    order: ['market', 'audience', 'format', 'period'],
+    /* The first slot is market OR audience, whichever this account splits
+     * its ad sets by. Both are toggles rather than one fixed choice,
+     * because accounts that run one market split by audience and accounts
+     * that run one audience split by market. Audience leads by default. */
+    defaults: { market: false, audience: true, format: true, period: true },
+    note: 'First slot is market or audience, whichever you split by. Then format, then dd/mm-dd/mm.',
   },
   {
     key: 'ad',
     label: 'Ads',
     aka: 'the individual creatives inside an ad set',
-    order: ['campaignName', 'market', 'objective', 'audience', 'format', 'variant', 'period'],
+    order: ['format', 'variant'],
     defaults: { format: true, variant: true },
-    note: 'One per creative. Keep it short, it sits inside an already long path.',
+    note: 'One per creative. Format and variant only, because it sits inside an already long path.',
   },
-  /* Only shown when something in the sheet uses a Lead Gen Form. Forms are
-   * account-level assets reused across campaigns, so they are not part of
-   * the hierarchy above and need their own convention. Without one the
-   * leads list is a column of forms nobody can tell apart. */
+  /* Only shown for lead generation campaigns. Forms are account-level
+   * assets reused across campaigns, so they sit outside the hierarchy
+   * above and need their own convention. Without one the leads list is a
+   * column of forms nobody can tell apart. */
   {
     key: 'form',
     label: 'Lead Gen Form',
     aka: 'the form itself, an account-level asset reused across campaigns',
-    order: ['client', 'asset', 'audience', 'market', 'period'],
-    defaults: { client: true, asset: true, audience: true, market: true, period: true },
-    note: 'One per offer, not one per campaign. Form names allow 256 characters, so length is not the constraint here.',
+    order: ['client', 'asset', 'period'],
+    defaults: { client: true, asset: true, period: true },
+    note: 'Client, the gated asset, then the quarter as YYYY-QQ. One per offer, not one per campaign.',
     formOnly: true,
   },
 ];
 
-/* Formats that carry a Lead Gen Form, plus the objective that implies one.
- * A Document ad gated behind a form is the case this exists for. */
-const FORM_FORMATS = new Set(['Document', 'Message', 'Conversation']);
-const usesForm = (row) => FORM_FORMATS.has(row.format) || row.objective === 'LeadGen';
+/* The form level is for lead generation and nothing else. A document ad
+ * on a traffic objective does not get one, so keying off the format would
+ * show the level where it does not belong. */
+const usesForm = (row) => row.objective === 'LeadGen';
 
 const OBJECTIVES = ['Brand', 'Traffic', 'Engagement', 'VideoViews', 'LeadGen', 'Conversions'];
 
@@ -190,8 +193,13 @@ export function periodFor(level, dates) {
   if (!start || !end) return '';
   const [sy, sm, sd] = start.split('-');
   const [ey, em, ed] = end.split('-');
-  /* A form outlives any one flight, so it takes the month shape too. */
-  if (level === 'campaign' || level === 'form') return `${sm}/${sy}-${em}/${ey}`;
+  /* Campaign spans the whole flight, so month and two-digit year. */
+  if (level === 'campaign') return `${sm}/${sy.slice(2)}-${em}/${ey.slice(2)}`;
+  /* A form outlives any one flight, so it is stamped with the quarter it
+   * belongs to rather than a range. */
+  if (level === 'form') return `${sy}-Q${Math.floor((Number(sm) - 1) / 3) + 1}`;
+  /* An ad set is often a burst inside the flight, where the day matters and
+   * the year is already implied by the campaign above it. */
   return `${sd}/${sm}-${ed}/${em}`;
 }
 
@@ -270,7 +278,8 @@ export default function NamingBuilder() {
   );
   const [activeLevel, setActiveLevel] = useState('campaign');
   const [sepName, setSepName] = useState('Underscore');
-  const [caseMode, setCaseMode] = useState('lower');
+  /* Upper by default: it is the house convention. */
+  const [caseMode, setCaseMode] = useState('upper');
   const [values, setValues] = useState({
     client: '',
     stakeholder: '',
@@ -327,18 +336,27 @@ export default function NamingBuilder() {
         /* The brief stores objectives comma-joined, so the first one is the
          * one to lead the names with. */
         const objective = OBJECTIVE_FROM_BRIEF[primaryObjective(b)];
-        const picks = (b.creatives || [])
-          .map((c) => FORMAT_FROM_BRIEF[c.format])
-          .filter(Boolean);
+        /* One row per variant, not one per format: the ad level is named
+         * {format}_{variant}, so a format with three variants needs three
+         * rows or the sheet cannot produce the names. */
+        const picks = [];
+        for (const c of b.creatives || []) {
+          const format = FORMAT_FROM_BRIEF[c.format];
+          if (!format) continue;
+          const count = Math.max(1, Number(c.quantity) || 1);
+          for (let i = 0; i < count; i++) {
+            picks.push({ format, variant: c.variants?.[i] || `V${i + 1}` });
+          }
+        }
 
         if (picks.length) {
           setRows(
-            picks.map((format, i) => ({
+            picks.map((pick, i) => ({
               id: nextId(),
               objective: objective || 'Brand',
               audience: i === 0 ? 'ICP-Cold' : 'Retarget-Site',
-              format,
-              variant: 'v1',
+              format: pick.format,
+              variant: pick.variant,
             }))
           );
         } else if (objective) {
@@ -396,9 +414,9 @@ export default function NamingBuilder() {
               if (TOKEN[k].from !== 'period') {
                 return `{${TOKEN[k].label.toLowerCase().replace(/\s+/g, '')}}`;
               }
-              return l.key === 'campaign' || l.key === 'form'
-                ? 'mm/yyyy-mm/yyyy'
-                : 'dd/mm-dd/mm';
+              if (l.key === 'campaign') return 'mm/yy-mm/yy';
+              if (l.key === 'form') return 'yyyy-Qq';
+              return 'dd/mm-dd/mm';
             });
           return [
             l.key,
@@ -684,9 +702,10 @@ export default function NamingBuilder() {
                   />
                 </Row>
                 <p className="fixed-note">
-                  Campaign names carry the period as {periodFor('campaign', dates) || 'mm/yyyy-mm/yyyy'},
-                  ad sets as {periodFor('adset', dates) || 'dd/mm-dd/mm'}. The year is implied at ad
-                  set level by the campaign above it.
+                  Campaigns carry the period as {periodFor('campaign', dates) || 'mm/yy-mm/yy'}, ad
+                  sets as {periodFor('adset', dates) || 'dd/mm-dd/mm'}, and Lead Gen Forms as{' '}
+                  {periodFor('form', dates) || 'yyyy-Qq'}. The year is implied at ad set level by the
+                  campaign above it.
                 </p>
               </div>
             </section>

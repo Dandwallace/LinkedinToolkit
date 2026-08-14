@@ -215,6 +215,15 @@ const FOLLOW_OBJECTIVE = 'Engagement';
 let uid = 0;
 const nextId = () => `c${++uid}`;
 
+/** Variant labels for an item, padded to its quantity. */
+function variantLabels(item) {
+  const out = [];
+  for (let i = 0; i < (item.quantity || 1); i++) {
+    out.push(item.variants?.[i] ?? `V${i + 1}`);
+  }
+  return out;
+}
+
 const truncate = (t, at) =>
   !t ? { shown: '', cut: false } : t.length <= at ? { shown: t, cut: false } : { shown: t.slice(0, at).trimEnd(), cut: true };
 
@@ -685,6 +694,19 @@ function buildPdf(jsPDF, brief, items, logo = null) {
       y += 3;
     }
 
+    {
+      const labels = variantLabels(item).filter(Boolean);
+      if (labels.length) {
+        need(12);
+        y += 1;
+        label('Variants');
+        y += 4;
+        doc.setFont('helvetica', 'normal').setFontSize(8.5);
+        y += body(labels.join(', '), M, COL, 8.5);
+        y += 4;
+      }
+    }
+
     if (item.notes) {
       need(14);
       y += 2;
@@ -775,6 +797,9 @@ export default function CreativeBrief() {
           const seeded = picks.map((c) => ({
             ...newItem(c.format),
             quantity: Math.min(20, Math.max(1, Number(c.quantity) || 1)),
+            /* Carry the variant names through, otherwise the brief and the
+             * ad names disagree the moment either is edited. */
+            variants: Array.isArray(c.variants) ? c.variants : [],
           }));
           setItems(seeded);
           setActiveId(seeded[0].id);
@@ -784,6 +809,18 @@ export default function CreativeBrief() {
   }, []);
 
   const active = items.find((i) => i.id === activeId) || items[0];
+
+  /* One label per variant, defaulted to V1..Vn and editable. Held on the
+   * item so the brief and the ad names cannot drift apart. */
+  const setVariant = (id, index, value) =>
+    setItems((p) =>
+      p.map((i) => {
+        if (i.id !== id) return i;
+        const next = variantLabels(i).slice();
+        next[index] = value;
+        return { ...i, variants: next };
+      })
+    );
   const setItem = (id, patch) => setItems((p) => p.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   const setCopy = (id, key, v) => setItems((p) => p.map((i) => (i.id === id ? { ...i, copy: { ...i.copy, [key]: v } } : i)));
   const bump = (id, delta) =>
@@ -957,6 +994,10 @@ export default function CreativeBrief() {
                     );
                   })}
                 </div>
+                <p className="li-cap">
+                  The number beside each format is how many variants to produce. Name them in
+                  section C so the ad names and the brief agree.
+                </p>
                 <div className="addrow">
                   <span className="row-label">Add</span>
                   <div className="chips">
@@ -1039,6 +1080,29 @@ export default function CreativeBrief() {
                       </div>
                     );
                   })}
+                  <div className="fld">
+                    <div className="fld-top">
+                      <span className="fld-label">Variants to produce</span>
+                      <span className="count">{active.quantity}</span>
+                    </div>
+                    <div className="vars">
+                      {variantLabels(active).map((v, i) => (
+                        <label className="var" key={i}>
+                          <span className="var-n">{i + 1}</span>
+                          <input
+                            className="var-inp"
+                            value={v}
+                            placeholder={`V${i + 1}`}
+                            onChange={(e) => setVariant(active.id, i, e.target.value)}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    <p className="fld-note">
+                      These are the variant names the ad naming uses, so keep them short. Change the
+                      count with the stepper in section B.
+                    </p>
+                  </div>
                   <label className="stack">
                     <span className="row-label">Copywriting notes for this creative</span>
                     <span className="row-hint">
@@ -1640,6 +1704,15 @@ const CSS = `
   border:1px solid var(--rule);color:var(--ink-2);cursor:pointer;}
 .ct.on{background:var(--stamp);color:#fff;border-color:var(--stamp);}
 .ct:focus-visible{outline:2px solid var(--carbon);outline-offset:2px;}
+.li-cap{margin:9px 0 0;font-size:10.5px;line-height:1.5;color:var(--ink-2);}
+.vars{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:5px 9px;}
+.var{display:flex;align-items:center;gap:6px;}
+.var-n{font-family:'Courier Prime',monospace;font-size:10.5px;color:var(--ink-2);
+  width:14px;flex:none;text-align:right;}
+.var-inp{flex:1;min-width:0;font-family:'Courier Prime',monospace;font-size:12px;
+  color:var(--carbon);background:#FBFAF6;border:1px solid var(--rule);padding:4px 6px;
+  border-radius:0;outline:none;}
+.var-inp:focus{border-color:var(--carbon);background:#F6F5FB;}
 .genblock{border-left:3px solid var(--carbon);background:#F5F4FA;padding:11px 13px;
   margin-bottom:14px;}
 .genblock.pre{border-left-color:var(--stamp);background:#FBF6EC;}
