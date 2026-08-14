@@ -207,12 +207,13 @@ function ClientCard({ client, ready }) {
       {/* unit level */}
       <Level label={has ? labels.unit : 'Campaigns'} counts={counts} />
 
-      {/* A Delivery export carries spend but no status column, so the
-        * counts stay at zero. Say why rather than looking like a failure. */}
-      {data && !data.statusReport && (
+      {/* A Delivery export carries spend but no status column, so nothing
+        * in it can say what is paused. Say so rather than letting the
+        * counts read as live states. */}
+      {data?.statusUnknown && (
         <p className="cl-nostatus">
-          None of the uploaded reports carries campaign status, so the counts stay empty. A
-          Performance report fills them.
+          No uploaded report carries a status column, so every campaign in the{' '}
+          {data.statusReport.type} is counted as running. A Performance report gives real states.
         </p>
       )}
 

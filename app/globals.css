@@ -341,6 +341,10 @@ body{
 /* Setup sits apart from the tools — it is configuration, not work. */
 .navlink.setup{margin-left:auto;color:#8E9089;border-left:1px solid #34362F;}
 .navlink.setup:hover{color:var(--white);}
+/* Only the first of the trailing group is pushed right. Without this each
+ * one takes the free space in turn and the three sit far apart, reading as
+ * three separate groups rather than the end of the nav. */
+.navlink.setup + .navlink.setup{margin-left:0;}
 .topbar-brief + .navlink.setup{margin-left:10px;}
 
 /* ---- privacy ---- */

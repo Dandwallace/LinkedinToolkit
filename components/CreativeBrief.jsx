@@ -1424,7 +1424,9 @@ function LeadGenSection({ item, flags, setForm, toggleField, setList }) {
         )}
 
         <SubHead note="mandatory">Data privacy</SubHead>
-        <label className="row">
+        {/* Stacked rather than in a row: a URL does not fit the value
+          * column, and a clipped URL cannot be checked by eye. */}
+        <label className="stack">
           <span className="row-label">Privacy policy URL</span>
           <input
             className="inp wide"
@@ -1455,7 +1457,7 @@ function LeadGenSection({ item, flags, setForm, toggleField, setList }) {
           rows={3}
           hint="Cannot be blank."
         />
-        <label className="row">
+        <label className="stack">
           <span className="row-label">Landing page URL</span>
           <input
             className="inp wide"
