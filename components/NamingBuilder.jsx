@@ -1,55 +1,96 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { geoToken, marketsOf, primaryObjective } from '@/lib/brief';
 
 /* ------------------------------------------------------------------ *
- * Token definitions. Order is fixed deliberately — a naming convention
- * whose field order drifts between campaigns is not a convention.
+ * Token definitions.
+ *
+ * `from` says where a token's value comes from: `value` is a fixed value
+ * typed once (or pulled from the brief), `row` varies per creative, and
+ * `period` is rendered from the flight dates.
  * ------------------------------------------------------------------ */
-const TOKENS = [
-  { key: 'client', label: 'Client', from: 'value' },
-  { key: 'market', label: 'Market', from: 'value' },
-  { key: 'objective', label: 'Objective', from: 'campaign' },
-  { key: 'audience', label: 'Audience', from: 'campaign' },
-  { key: 'format', label: 'Format', from: 'campaign' },
-  { key: 'variant', label: 'Variant', from: 'campaign' },
+const TOKEN = {
+  client: { label: 'Client', from: 'value' },
+  stakeholder: { label: 'Stakeholder', from: 'value' },
+  campaignName: { label: 'Campaign name', from: 'value' },
+  /* The gated asset a Lead Gen Form collects for. Form level only. */
+  asset: { label: 'Asset', from: 'value' },
+  market: { label: 'Market', from: 'value' },
+  objective: { label: 'Objective', from: 'row' },
+  audience: { label: 'Audience', from: 'row' },
+  format: { label: 'Format', from: 'row' },
+  variant: { label: 'Variant', from: 'row' },
   /* Rendered from the date range and never cleaned, so the slashes survive
    * into the name. Its shape differs per level, set in periodFor below. */
-  { key: 'period', label: 'Period', from: 'period', raw: true },
-];
+  period: { label: 'Period', from: 'period', raw: true },
+};
 
 /* ------------------------------------------------------------------ *
- * The three rungs of the account.
+ * The rungs of the account, plus the form.
  *
- * LinkedIn renamed these: the group is now called Campaign and what used
- * to be the campaign is the Ad Set. One flat pattern cannot describe all
- * three, because each rung is distinguished by different tokens. The group
- * is one per objective, so a format token there would be meaningless; the
- * ad is one per creative, so it needs one.
+ * LinkedIn renamed the hierarchy: the group is now called Campaign and
+ * what used to be the campaign is the Ad Set. One flat pattern cannot
+ * describe all of them, because each rung is distinguished by different
+ * tokens, in a different order. The group is one per objective, so a
+ * format token there would be meaningless; the ad is one per creative, so
+ * it needs one.
+ *
+ * `order` is the token order for that rung and is fixed deliberately: a
+ * naming convention whose field order drifts between campaigns is not a
+ * convention.
  * ------------------------------------------------------------------ */
 const LEVELS = [
   {
     key: 'campaign',
     label: 'Campaign',
     aka: 'the group. LinkedIn used to call this the Campaign Group',
-    defaults: { client: true, market: true, objective: true, audience: false, format: false, variant: false, period: true },
+    order: ['client', 'stakeholder', 'campaignName', 'market', 'objective', 'period'],
+    defaults: {
+      client: true,
+      stakeholder: true,
+      campaignName: true,
+      market: true,
+      objective: true,
+      period: true,
+    },
     note: 'One per objective. Everything below inherits its budget and schedule.',
   },
   {
     key: 'adset',
     label: 'Campaign Ad Set',
     aka: 'what LinkedIn used to call the Campaign, and what actually spends',
-    defaults: { client: false, market: true, objective: false, audience: true, format: true, variant: false, period: true },
+    order: ['client', 'campaignName', 'market', 'objective', 'audience', 'format', 'variant', 'period'],
+    defaults: { market: true, audience: true, format: true, period: true },
     note: 'One per audience. This is the rung you will filter reporting by.',
   },
   {
     key: 'ad',
     label: 'Ads',
     aka: 'the individual creatives inside an ad set',
-    defaults: { client: false, market: false, objective: false, audience: false, format: true, variant: true, period: false },
+    order: ['campaignName', 'market', 'objective', 'audience', 'format', 'variant', 'period'],
+    defaults: { format: true, variant: true },
     note: 'One per creative. Keep it short, it sits inside an already long path.',
   },
+  /* Only shown when something in the sheet uses a Lead Gen Form. Forms are
+   * account-level assets reused across campaigns, so they are not part of
+   * the hierarchy above and need their own convention. Without one the
+   * leads list is a column of forms nobody can tell apart. */
+  {
+    key: 'form',
+    label: 'Lead Gen Form',
+    aka: 'the form itself, an account-level asset reused across campaigns',
+    order: ['client', 'asset', 'audience', 'market', 'period'],
+    defaults: { client: true, asset: true, audience: true, market: true, period: true },
+    note: 'One per offer, not one per campaign. Form names allow 256 characters, so length is not the constraint here.',
+    formOnly: true,
+  },
 ];
+
+/* Formats that carry a Lead Gen Form, plus the objective that implies one.
+ * A Document ad gated behind a form is the case this exists for. */
+const FORM_FORMATS = new Set(['Document', 'Message', 'Conversation']);
+const usesForm = (row) => FORM_FORMATS.has(row.format) || row.objective === 'LeadGen';
 
 const OBJECTIVES = ['Brand', 'Traffic', 'Engagement', 'VideoViews', 'LeadGen', 'Conversions'];
 
@@ -85,6 +126,9 @@ const AUDIENCES = [
   'ABM-Tier1',
   'ABM-Tier2',
   'Lookalike',
+  /* The two segments the pharma accounts actually buy against. */
+  'Large-Pharma',
+  'SMIDs',
 ];
 const FORMATS = [
   'SingleImage',
@@ -146,18 +190,26 @@ export function periodFor(level, dates) {
   if (!start || !end) return '';
   const [sy, sm, sd] = start.split('-');
   const [ey, em, ed] = end.split('-');
-  if (level === 'campaign') return `${sm}/${sy}-${em}/${ey}`;
+  /* A form outlives any one flight, so it takes the month shape too. */
+  if (level === 'campaign' || level === 'form') return `${sm}/${sy}-${em}/${ey}`;
   return `${sd}/${sm}-${ed}/${em}`;
 }
 
-function buildName(tokens, sep, mode, values, row, level, dates) {
-  const parts = TOKENS.filter((t) => tokens[t.key])
-    .map((t) => {
-      if (t.from === 'period') return periodFor(level, dates);
-      return t.from === 'value' ? values[t.key] : row[t.key];
+/** The value behind one token, before cleaning. */
+function tokenValue(key, level, values, row, dates) {
+  const t = TOKEN[key];
+  if (t.from === 'period') return periodFor(level.key, dates);
+  return t.from === 'value' ? values[key] : row[key];
+}
+
+function buildName(level, enabled, sep, mode, values, row, dates) {
+  const parts = level.order
+    .filter((k) => enabled[k])
+    .map((k) => {
+      const v = tokenValue(k, level, values, row, dates);
+      /* The period keeps its slashes; everything else is scrubbed. */
+      return TOKEN[k].raw ? String(v || '') : clean(v);
     })
-    /* The period keeps its slashes; everything else is scrubbed. */
-    .map((v, i) => (TOKENS.filter((t) => tokens[t.key])[i]?.raw ? String(v || '') : clean(v)))
     .filter(Boolean);
   return applyCase(parts.join(sep), mode);
 }
@@ -219,11 +271,19 @@ export default function NamingBuilder() {
   const [activeLevel, setActiveLevel] = useState('campaign');
   const [sepName, setSepName] = useState('Underscore');
   const [caseMode, setCaseMode] = useState('lower');
-  const [values, setValues] = useState({ client: '', market: 'EMEA' });
+  const [values, setValues] = useState({
+    client: '',
+    stakeholder: '',
+    campaignName: '',
+    asset: '',
+    market: 'EMEA',
+  });
   const [dates, setDates] = useState({ start: '', end: '' });
   const [utm, setUtm] = useState({ source: 'linkedin', medium: 'paid-social', landing: '' });
   const [rows, setRows] = useState(() => STARTER.map((r) => ({ id: nextId(), ...r })));
   const [linked, setLinked] = useState(null);
+  /* Kept so the sheet can say why the geo reads Global. */
+  const [briefMarkets, setBriefMarkets] = useState('');
   const [copied, setCopied] = useState('');
   const loaded = useRef(false);
 
@@ -239,7 +299,12 @@ export default function NamingBuilder() {
 
         const patch = {};
         if (b.client) patch.client = b.client;
-        if (b.markets) patch.market = b.markets.split(',')[0].trim();
+        if (b.stakeholder) patch.stakeholder = b.stakeholder;
+        if (b.campaignName) patch.campaignName = b.campaignName;
+        /* One market is that market, several become Global. Naming a
+         * three-region campaign after whichever region was typed first is
+         * the mistake this replaces. */
+        if (b.markets) patch.market = geoToken(b.markets);
         if (Object.keys(patch).length) {
           setValues((p) => ({ ...p, ...patch }));
           setLinked(b.client || 'saved brief');
@@ -257,7 +322,11 @@ export default function NamingBuilder() {
           });
         }
 
-        const objective = OBJECTIVE_FROM_BRIEF[b.objective];
+        setBriefMarkets(b.markets || '');
+
+        /* The brief stores objectives comma-joined, so the first one is the
+         * one to lead the names with. */
+        const objective = OBJECTIVE_FROM_BRIEF[primaryObjective(b)];
         const picks = (b.creatives || [])
           .map((c) => FORMAT_FROM_BRIEF[c.format])
           .filter(Boolean);
@@ -284,23 +353,35 @@ export default function NamingBuilder() {
 
   const sep = SEPARATORS[sepName];
 
+  /* Whether anything in the sheet needs a form name. A Document ad gated
+   * behind a Lead Gen Form is the case, but any lead gen row needs one. */
+  const anyForm = useMemo(() => rows.some(usesForm), [rows]);
+  const levels = useMemo(() => LEVELS.filter((l) => !l.formOnly || anyForm), [anyForm]);
+
+  /* The form tab disappears when the last lead gen row goes, so the
+   * pattern panel cannot be left pointing at a level that is not there. */
+  useEffect(() => {
+    if (!levels.some((l) => l.key === activeLevel)) setActiveLevel('campaign');
+  }, [levels, activeLevel]);
+
   const built = useMemo(
     () =>
       rows.map((r) => {
         const names = Object.fromEntries(
-          LEVELS.map((l) => [l.key, buildName(levelTokens[l.key], sep, caseMode, values, r, l.key, dates)])
+          LEVELS.map((l) => [l.key, buildName(l, levelTokens[l.key], sep, caseMode, values, r, dates)])
         );
+        const adset = LEVELS.find((l) => l.key === 'adset');
         /* The tagged URL keys off the ad set: that is the rung whose name
          * carries the audience, and the one reporting is grouped by. */
         const slug = applyCase(
-          TOKENS.filter((t) => levelTokens.adset[t.key])
-            .map((t) => (t.from === 'value' ? values[t.key] : r[t.key]))
-            .map(clean)
+          adset.order
+            .filter((k) => levelTokens.adset[k] && !TOKEN[k].raw)
+            .map((k) => clean(tokenValue(k, adset, values, r, dates)))
             .filter(Boolean)
             .join('-'),
           'lower'
         );
-        return { ...r, names, slug, url: buildUrl(utm.landing, utm, slug, r) };
+        return { ...r, form: usesForm(r), names, slug, url: buildUrl(utm.landing, utm, slug, r) };
       }),
     [rows, levelTokens, sep, caseMode, values, utm, dates]
   );
@@ -309,13 +390,16 @@ export default function NamingBuilder() {
     () =>
       Object.fromEntries(
         LEVELS.map((l) => {
-          const parts = TOKENS.filter((t) => levelTokens[l.key][t.key]).map((t) =>
-            t.from === 'period'
-              ? l.key === 'campaign'
+          const parts = l.order
+            .filter((k) => levelTokens[l.key][k])
+            .map((k) => {
+              if (TOKEN[k].from !== 'period') {
+                return `{${TOKEN[k].label.toLowerCase().replace(/\s+/g, '')}}`;
+              }
+              return l.key === 'campaign' || l.key === 'form'
                 ? 'mm/yyyy-mm/yyyy'
-                : 'dd/mm-dd/mm'
-              : `{${t.label.toLowerCase()}}`
-          );
+                : 'dd/mm-dd/mm';
+            });
           return [
             l.key,
             parts.length ? applyCase(parts.join(sep), caseMode) : 'nothing selected',
@@ -344,13 +428,25 @@ export default function NamingBuilder() {
         text: `${dupes.length} duplicate ad set name${dupes.length === 1 ? '' : 's'} within the same campaign. Two ad sets sharing a name makes reporting impossible to split. Add the audience or format token, or vary the variant.`,
       });
     }
-    for (const l of LEVELS) {
-      if (!Object.values(levelTokens[l.key]).some(Boolean)) {
+    for (const l of levels) {
+      if (!l.order.some((k) => levelTokens[l.key][k])) {
         out.push({
           level: 'blocker',
           text: `${l.label} has no tokens selected, so it generates an empty name.`,
         });
       }
+    }
+    if (anyForm && levelTokens.form.asset && !values.asset) {
+      out.push({
+        level: 'action',
+        text: 'The form name carries an asset token but no asset is set. Name the thing being offered, such as the report or the guide, or two forms end up with the same name.',
+      });
+    }
+    if (marketsOf(briefMarkets).length > 1) {
+      out.push({
+        level: 'note',
+        text: `The brief names ${marketsOf(briefMarkets).length} markets, so the geo token is Global rather than any one of them.`,
+      });
     }
     if (!values.client) {
       out.push({
@@ -392,7 +488,7 @@ export default function NamingBuilder() {
       });
     }
     return out;
-  }, [built, levelTokens, values, utm, caseMode, periodSet]);
+  }, [built, levelTokens, values, utm, caseMode, periodSet, levels, anyForm, briefMarkets]);
 
   const setRow = (id, patch) =>
     setRows((p) => p.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -412,8 +508,17 @@ export default function NamingBuilder() {
   const copyTable = () =>
     copy(
       [
-        'Campaign\tCampaign Ad Set\tAd\tLanding URL',
-        ...built.map((b) => `${b.names.campaign}\t${b.names.adset}\t${b.names.ad}\t${b.url}`),
+        ['Campaign', 'Campaign Ad Set', 'Ad', ...(anyForm ? ['Lead Gen Form'] : []), 'Landing URL']
+          .join('\t'),
+        ...built.map((b) =>
+          [
+            b.names.campaign,
+            b.names.adset,
+            b.names.ad,
+            ...(anyForm ? [b.form ? b.names.form : ''] : []),
+            b.url,
+          ].join('\t')
+        ),
       ].join('\n'),
       'table'
     );
@@ -428,6 +533,7 @@ export default function NamingBuilder() {
             <h1 className="mast-title">Naming &amp; tracking</h1>
             <div className="linked">
               Campaign, ad set and ad, each with its own pattern
+              {anyForm && ', plus the Lead Gen Form'}
               {linked && ` · prefilled from ${linked}`}
             </div>
           </div>
@@ -449,7 +555,7 @@ export default function NamingBuilder() {
               </h2>
               <div className="grp-body">
                 <div className="lvltabs">
-                  {LEVELS.map((l) => (
+                  {levels.map((l) => (
                     <button
                       key={l.key}
                       type="button"
@@ -460,34 +566,36 @@ export default function NamingBuilder() {
                     </button>
                   ))}
                 </div>
-                {LEVELS.filter((l) => l.key === activeLevel).map((l) => (
-                  <div key={l.key}>
-                    <p className="lvl-aka">{l.aka}</p>
-                    <div className="plate">
-                      <span className="plate-lab">{l.label} pattern</span>
-                      <code className="plate-code">{patterns[l.key]}</code>
+                {levels
+                  .filter((l) => l.key === activeLevel)
+                  .map((l) => (
+                    <div key={l.key}>
+                      <p className="lvl-aka">{l.aka}</p>
+                      <div className="plate">
+                        <span className="plate-lab">{l.label} pattern</span>
+                        <code className="plate-code">{patterns[l.key]}</code>
+                      </div>
+                      <div className="toks">
+                        {l.order.map((k) => (
+                          <button
+                            key={k}
+                            type="button"
+                            className={levelTokens[l.key][k] ? 'tok on' : 'tok'}
+                            onClick={() =>
+                              setLevelTokens((p) => ({
+                                ...p,
+                                [l.key]: { ...p[l.key], [k]: !p[l.key][k] },
+                              }))
+                            }
+                          >
+                            <span className="tok-box">{levelTokens[l.key][k] ? '×' : ''}</span>
+                            {TOKEN[k].label}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="lvl-note">{l.note}</p>
                     </div>
-                    <div className="toks">
-                      {TOKENS.map((t) => (
-                        <button
-                          key={t.key}
-                          type="button"
-                          className={levelTokens[l.key][t.key] ? 'tok on' : 'tok'}
-                          onClick={() =>
-                            setLevelTokens((p) => ({
-                              ...p,
-                              [l.key]: { ...p[l.key], [t.key]: !p[l.key][t.key] },
-                            }))
-                          }
-                        >
-                          <span className="tok-box">{levelTokens[l.key][t.key] ? '×' : ''}</span>
-                          {t.label}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="lvl-note">{l.note}</p>
-                  </div>
-                ))}
+                  ))}
                 <Row label="Separator">
                   <Pick value={sepName} onChange={setSepName} options={Object.keys(SEPARATORS)} />
                 </Row>
@@ -507,6 +615,9 @@ export default function NamingBuilder() {
                 Fixed values
               </h2>
               <div className="grp-body">
+                {/* All four come from the saved brief and stay editable.
+                  * Retyping them here is how the same campaign ends up
+                  * spelled two ways across the account. */}
                 <Row label="Client">
                   <input
                     className="inp"
@@ -515,7 +626,30 @@ export default function NamingBuilder() {
                     onChange={(e) => setValues((p) => ({ ...p, client: e.target.value }))}
                   />
                 </Row>
-                <Row label="Market">
+                <Row label="Stakeholder">
+                  <input
+                    className="inp"
+                    value={values.stakeholder}
+                    placeholder="Contact"
+                    onChange={(e) => setValues((p) => ({ ...p, stakeholder: e.target.value }))}
+                  />
+                </Row>
+                <Row label="Campaign name">
+                  <input
+                    className="inp"
+                    value={values.campaignName}
+                    placeholder="Q3 access"
+                    onChange={(e) => setValues((p) => ({ ...p, campaignName: e.target.value }))}
+                  />
+                </Row>
+                <Row
+                  label="Market"
+                  hint={
+                    marketsOf(briefMarkets).length > 1
+                      ? `${marketsOf(briefMarkets).length} markets in the brief, so Global`
+                      : 'one market, or Global for several'
+                  }
+                >
                   <input
                     className="inp"
                     value={values.market}
@@ -523,6 +657,16 @@ export default function NamingBuilder() {
                     onChange={(e) => setValues((p) => ({ ...p, market: e.target.value }))}
                   />
                 </Row>
+                {anyForm && (
+                  <Row label="Asset" hint="what the form is collecting for">
+                    <input
+                      className="inp"
+                      value={values.asset}
+                      placeholder="Whitepaper"
+                      onChange={(e) => setValues((p) => ({ ...p, asset: e.target.value }))}
+                    />
+                  </Row>
+                )}
                 <Row label="Flight starts">
                   <input
                     className="inp"
@@ -627,7 +771,10 @@ export default function NamingBuilder() {
                     </button>
                   </div>
 
-                  {LEVELS.map((l) => (
+                  {/* The form line only appears on rows that carry a form.
+                    * A single image ad pointed at a landing page has no
+                    * form to name. */}
+                  {LEVELS.filter((l) => !l.formOnly || b.form).map((l) => (
                     <div className={`outline lv-${l.key}`} key={l.key}>
                       <span className="outline-lab">{l.label}</span>
                       <code className="outline-val">{b.names[l.key] || 'no tokens'}</code>
@@ -662,8 +809,9 @@ export default function NamingBuilder() {
                 {copied === 'table' ? 'Copied' : 'Copy all as table'}
               </button>
               <span className="foot-note">
-                Pastes into Sheets as four columns, one per level plus the tagged URL. The same
-                names must be used in Campaign Manager or reporting will not join up.
+                Pastes into Sheets as one column per level plus the tagged URL
+                {anyForm ? ', including the Lead Gen Form name' : ''}. The same names must be
+                used in Campaign Manager or reporting will not join up.
               </span>
             </div>
           </div>
@@ -697,6 +845,8 @@ const CSS = `
 .outline.lv-adset{border-top:1px dotted var(--rule-2);}
 .outline.lv-ad{border-top:1px dotted var(--rule-2);}
 .outline.lv-ad .outline-val{font-size:12px;color:var(--ink-2);}
+.outline.lv-form{border-top:1px dotted var(--rule-2);}
+.outline.lv-form .outline-lab{color:var(--stamp);}
 .plate{background:#EFEEE7;border:1px solid var(--rule);padding:9px 11px;margin:8px 0 10px;}
 .plate-lab{display:block;font-family:'Archivo Narrow',sans-serif;font-weight:700;
   font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-2);margin-bottom:4px;}
