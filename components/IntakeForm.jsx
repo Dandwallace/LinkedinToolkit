@@ -370,8 +370,7 @@ export default function IntakeForm() {
   const [saved, setSaved] = useState('');
   const [copied, setCopied] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [airtable, setAirtable] = useState({ state: 'idle', message: '', url: null });
-  const [savedBriefs, setSavedBriefs] = useState([]);
+  const [remote, setRemote] = useState({ state: 'idle', message: '', url: null });
   const loaded = useRef(false);
 
   const set = (k) => (v) => setB((prev) => ({ ...prev, [k]: v }));
@@ -383,12 +382,6 @@ export default function IntakeForm() {
         if (r?.value) setB({ ...EMPTY, ...JSON.parse(r.value) });
       } catch {
         /* no saved brief yet - expected on first run */
-      }
-      try {
-        const { keys } = await window.storage.list('brief:client:');
-        setSavedBriefs(keys.map((k) => k.replace('brief:client:', '')).sort());
-      } catch {
-        /* nothing saved by client yet */
       }
       loaded.current = true;
     })();
@@ -430,44 +423,32 @@ export default function IntakeForm() {
       ),
     }));
 
-  /* ---- saving a brief by client ----
-   * `brief:current` is the autosave the other tools read. A named save
-   * writes a second copy under the client so switching between accounts
-   * does not overwrite the one you were last looking at. */
-  const refreshSaved = async () => {
-    try {
-      const { keys } = await window.storage.list('brief:client:');
-      setSavedBriefs(keys.map((k) => k.replace('brief:client:', '')).sort());
-    } catch {
-      setSavedBriefs([]);
-    }
-  };
-
+  /* ---- saving a brief ----
+   * `brief:current` is the autosave every other tool reads. Save also
+   * writes a keyed copy so a client can have several briefs at once, one
+   * per campaign, rather than each save replacing the last. */
   const saveBrief = async () => {
     if (!b.client) return;
+    if (!b.campaignName.trim()) {
+      setRemote({
+        state: 'error',
+        message: 'Give the campaign a name first, otherwise this would overwrite the client\'s other saved brief.',
+        url: null,
+      });
+      return;
+    }
     try {
-      await window.storage.set(`brief:client:${b.client}`, JSON.stringify(b));
-      await refreshSaved();
+      await window.storage.set(savedKey(b), JSON.stringify(b));
       setSaved(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+      setRemote({
+        state: 'done',
+        message: `Saved ${b.client} ${b.campaignName}. Open it any time from Saved briefs.`,
+        url: null,
+      });
     } catch (err) {
-      setAirtable({ state: 'error', message: `Could not save: ${err.message}`, url: null });
+      setRemote({ state: 'error', message: `Could not save: ${err.message}`, url: null });
     }
   };
-
-  const loadBrief = async (client) => {
-    try {
-      const r = await window.storage.get(`brief:client:${client}`);
-      setB({ ...EMPTY, ...JSON.parse(r.value) });
-      setAirtable({ state: 'done', message: `Loaded the saved brief for ${client}`, url: null });
-    } catch {
-      setAirtable({ state: 'error', message: `No saved brief for ${client}`, url: null });
-    }
-  };
-
-  const filled = Object.entries(b).filter(([, v]) =>
-    Array.isArray(v) ? v.length > 0 : String(v).trim() !== ''
-  ).length;
-  const total = Object.keys(EMPTY).length;
 
   const copy = () => {
     const lines = [
@@ -486,22 +467,27 @@ export default function IntakeForm() {
     setTimeout(() => setCopied(false), 1800);
   };
 
+  const filled = Object.entries(b).filter(([, v]) =>
+    Array.isArray(v) ? v.length > 0 : String(v).trim() !== ''
+  ).length;
+  const total = Object.keys(EMPTY).length;
+
   const exportPdf = async () => {
     setExporting(true);
     try {
       await downloadBriefPdf(b, notes, fc);
     } catch (err) {
-      setAirtable({ state: 'error', message: `Could not build the PDF: ${err.message}`, url: null });
+      setRemote({ state: 'error', message: `Could not build the PDF: ${err.message}`, url: null });
     }
     setExporting(false);
   };
 
-  /* The Airtable token is a write credential for the whole base, so the
-   * write happens server-side. The browser only ever sends the brief. */
-  const saveToAirtable = async () => {
-    setAirtable({ state: 'saving', message: 'Saving…', url: null });
+  /* The Monday token can write to every board on the account, so the write
+   * happens server-side. The browser only ever sends the brief. */
+  const saveToMonday = async () => {
+    setRemote({ state: 'saving', message: 'Saving…', url: null });
     try {
-      const res = await fetch('/api/airtable/brief', {
+      const res = await fetch('/api/monday/brief', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -511,12 +497,12 @@ export default function IntakeForm() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) {
-        setAirtable({ state: 'error', message: json.error || `Failed (${res.status})`, url: null });
+        setRemote({ state: 'error', message: json.error || `Failed (${res.status})`, url: null });
         return;
       }
-      setAirtable({ state: 'done', message: 'Saved to Airtable', url: json.url });
+      setRemote({ state: 'done', message: 'Saved to Monday.com', url: json.url });
     } catch (err) {
-      setAirtable({ state: 'error', message: `Could not reach the server: ${err.message}`, url: null });
+      setRemote({ state: 'error', message: `Could not reach the server: ${err.message}`, url: null });
     }
   };
 
@@ -753,10 +739,10 @@ export default function IntakeForm() {
                 <button
                   type="button"
                   className="btn"
-                  onClick={saveToAirtable}
-                  disabled={airtable.state === 'saving'}
+                  onClick={saveToMonday}
+                  disabled={remote.state === 'saving'}
                 >
-                  {airtable.state === 'saving' ? 'Saving…' : 'Save to Airtable'}
+                  {remote.state === 'saving' ? 'Saving…' : 'Save to Monday.com'}
                 </button>
                 <button type="button" className="btn" onClick={saveBrief} disabled={!b.client}>
                   Save
@@ -776,33 +762,16 @@ export default function IntakeForm() {
               </div>
               <div className="foot-meta">
                 <span className="save">{saved ? `Autosaved ${saved}` : 'Autosaving'}</span>
-                {savedBriefs.length > 0 && (
-                  <label className="loadwrap">
-                    <span className="load-lab">Load saved</span>
-                    <select
-                      className="load-sel"
-                      value=""
-                      onChange={(e) => e.target.value && loadBrief(e.target.value)}
-                    >
-                      <option value="">Choose a client</option>
-                      {savedBriefs.map((n) => (
-                        <option key={n} value={n}>
-                          {n}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
               </div>
             </footer>
 
-            {airtable.state !== 'idle' && airtable.state !== 'saving' && (
-              <p className={`airtable-msg${airtable.state === 'error' ? ' bad' : ''}`}>
-                {airtable.message}
-                {airtable.url && (
+            {remote.state !== 'idle' && remote.state !== 'saving' && (
+              <p className={`remote-msg${remote.state === 'error' ? ' bad' : ''}`}>
+                {remote.message}
+                {remote.url && (
                   <>
                     {'. '}
-                    <a href={airtable.url} target="_blank" rel="noreferrer">
+                    <a href={remote.url} target="_blank" rel="noreferrer">
                       open the record
                     </a>
                   </>
@@ -1100,13 +1069,13 @@ const CSS = `
   border-left: 1px solid var(--rule); border-right: 1px solid var(--rule); padding: 1px 0;
 }
 .cfmt-total { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--carbon); }
-.airtable-msg {
+.remote-msg {
   margin: 0; padding: 10px 22px 13px; background: #F3F2EC;
   border-top: 1px dotted var(--rule);
   font-size: 12px; line-height: 1.5; color: var(--ok);
 }
-.airtable-msg.bad { color: var(--stamp); }
-.airtable-msg a { color: var(--carbon); }
+.remote-msg.bad { color: var(--stamp); }
+.remote-msg a { color: var(--carbon); }
 .btn {
   font-family: 'Archivo Narrow', sans-serif; font-weight: 700;
   font-size: 11px; letter-spacing: .13em; text-transform: uppercase;

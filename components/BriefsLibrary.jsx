@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { storage } from '@/lib/storage';
-import { CURRENT_KEY, clientKey, objectivesOf } from '@/lib/brief';
+import { CURRENT_KEY, SAVED_PREFIX, parseSavedKey, objectivesOf } from '@/lib/brief';
 
 /**
  * Saved briefs.
@@ -16,7 +16,7 @@ import { CURRENT_KEY, clientKey, objectivesOf } from '@/lib/brief';
  * design. It is a switcher, not an archive.
  */
 
-const PREFIX = 'brief:client:';
+const PREFIX = SAVED_PREFIX;
 
 export default function BriefsLibrary() {
   const [briefs, setBriefs] = useState([]);
@@ -32,7 +32,13 @@ export default function BriefsLibrary() {
         try {
           const r = await storage.get(k);
           const b = JSON.parse(r.value);
-          out.push({ key: k, name: k.slice(PREFIX.length), brief: b });
+          const { client, campaign } = parseSavedKey(k);
+          out.push({
+            key: k,
+            name: b.client || client,
+            campaign: b.campaignName || campaign,
+            brief: b,
+          });
         } catch {
           /* unreadable entry, skip rather than break the list */
         }
@@ -40,7 +46,14 @@ export default function BriefsLibrary() {
     } catch {
       /* nothing saved yet */
     }
-    setBriefs(out.sort((a, b) => a.name.localeCompare(b.name)));
+    /* Group by client, then campaign, so one client's several briefs sit
+     * together rather than scattered. */
+    setBriefs(
+      out.sort(
+        (a, b) =>
+          a.name.localeCompare(b.name) || String(a.campaign).localeCompare(String(b.campaign))
+      )
+    );
 
     try {
       const r = await storage.get(CURRENT_KEY);
@@ -59,14 +72,15 @@ export default function BriefsLibrary() {
     await storage.set(CURRENT_KEY, JSON.stringify(entry.brief));
     setCurrent(entry.brief);
     setMessage(
-      `${entry.name} is now the active brief. Intake, Naming, Creative, Plan score and QA all read from it.`
+      `${[entry.name, entry.campaign].filter(Boolean).join(' ')} is now the active brief. Intake, Naming, Creative, Plan score and QA all read from it.`
     );
   };
 
   const remove = async (entry) => {
-    if (!confirm(`Delete the saved brief for ${entry.name}? This cannot be undone.`)) return;
+    const label = [entry.name, entry.campaign].filter(Boolean).join(' ');
+    if (!confirm(`Delete the saved brief for ${label}? This cannot be undone.`)) return;
     await storage.delete(entry.key);
-    setMessage(`Deleted the saved brief for ${entry.name}.`);
+    setMessage(`Deleted the saved brief for ${label}.`);
     load();
   };
 
