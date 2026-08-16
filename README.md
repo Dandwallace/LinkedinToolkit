@@ -27,25 +27,26 @@ works immediately — no setup, no account, no API.
 
 Listed in the order they are used, which is the order they appear in the nav.
 
-| | | Needs API |
-|---|---|---|
-| LA-01 | Intake — discovery capture with live flags, PDF and Airtable export | |
-| LA-04 | Naming — campaign names and tagged URLs | |
-| LA-07 | Significance — is the difference real yet | |
-| LA-08 | CSV analysis — drop in a Campaign Manager export | |
-| LA-09 | Retargeting — pool fill times and sequencing | |
-| LA-10 | Plan score — score a plan before building it | |
-| LA-REF | Best practices — sourced, with dates | |
-| LA-05 | QA — 32 pre-launch checks, 16 blocking | |
-| LA-11 | Dayparting — schedule delivery hours | ● |
-| LA-12 | Live reporting — pull straight from the API | ● |
-| LA-13 | Monitor — budget pacing and frequency | ● |
-| LA-14 | Companies — who actually saw the ads | ● |
-| LA-06 | Brief — brief the design team, export PDF | |
+| | Needs API |
+|---|---|
+| Intake, discovery capture with live flags, PDF and Monday.com export | |
+| Naming, campaign names and tagged URLs | |
+| Creative, brief the design team, export PDF | |
+| Significance, is the difference real yet | |
+| Retargeting, pool fill times and sequencing | |
+| Plan score, score a plan before building it | |
+| Best practices, sourced, with dates | |
+| QA, 32 pre-launch checks, 16 blocking | |
+| Reporting, from an export or from the API | ● |
+| Dayparting, schedule delivery hours | ● |
+| Monitor, budget pacing and frequency | ● |
+| Companies, who actually saw the ads | ● |
 
-The creative brief sits at the end of the nav beside Saved briefs and Setup
-rather than in the tool list: it is the document the rest of the work is
-handed over in, and it is opened from wherever you happen to be.
+Reporting sits in the connected group because its second mode pulls from the
+API, but its upload mode works without credentials.
+
+Saved briefs sits at the end of the nav rather than in the tool list. It is
+the switcher: opening a brief there makes every tool read from it.
 
 The home page is a dashboard rather than a menu: Marken, PCI and GCSG each
 show healthy / flagged / paused counts and total spend derived from the
