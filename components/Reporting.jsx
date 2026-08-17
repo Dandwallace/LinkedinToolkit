@@ -189,6 +189,10 @@ function UploadMode() {
                 [parsed.labels.group, num(parsed.groups.length || 0)],
                 [parsed.labels.unit, num(parsed.campaigns.length)],
                 ['Range', parsed.from ? `${parsed.from} to ${parsed.to}` : 'no dates'],
+                /* Campaign Manager writes slashed dates in the account's own
+                 * locale, so which way round they were read is worth showing:
+                 * it is the difference between 7 March and 3 July. */
+                ['Dates read as', parsed.dateOrder === 'mdy' ? 'MM/DD/YYYY' : 'DD/MM/YYYY'],
               ].map(([l, v]) => (
                 <div className="stat" key={l}>
                   <span className="stat-lab">{l}</span>
@@ -219,6 +223,14 @@ function UploadMode() {
                   ))}
                 </span>
               </div>
+            )}
+
+            {parsed.rangeFrom === 'report' && (
+              <p className="caveat">
+                Every row in this export sits on the same day, because it is aggregated over the
+                whole period rather than broken down by date. The range above is therefore the one
+                asked for in Campaign Manager, read from the lines above the header.
+              </p>
             )}
 
             {parsed.undated > 0 && (
