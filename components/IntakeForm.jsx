@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { downloadBriefPdf } from '@/lib/brief-pdf';
 import { CLIENTS } from '@/lib/client-store';
-import { hasObjective, geoToken } from '@/lib/brief';
+import { hasObjective, geoToken, savedKey } from '@/lib/brief';
 
 const CLIENT_NAMES = CLIENTS.map((c) => c.name);
 
