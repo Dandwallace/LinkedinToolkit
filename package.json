@@ -5,17 +5,23 @@
   "description": "Planning, QA and reporting tools for LinkedIn Ads",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "eslint . && next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint ."
   },
   "dependencies": {
+    "jspdf": "4.2.1",
     "next": "15.5.22",
     "react": "19.0.0",
-    "react-dom": "19.0.0",
-    "jspdf": "4.2.1"
+    "react-dom": "19.0.0"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.5",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.11.0"
   }
 }
