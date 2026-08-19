@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { downloadBriefPdf } from '@/lib/brief-pdf';
+import { briefPdfBlob, downloadBriefPdf } from '@/lib/brief-pdf';
 import { CLIENTS } from '@/lib/client-store';
 import { hasObjective, geoToken, savedKey } from '@/lib/brief';
 
@@ -370,7 +370,7 @@ export default function IntakeForm() {
   const [saved, setSaved] = useState('');
   const [copied, setCopied] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [remote, setRemote] = useState({ state: 'idle', message: '', url: null });
+  const [remote, setRemote] = useState({ state: 'idle', message: '', url: null, details: [] });
   const loaded = useRef(false);
 
   const set = (k) => (v) => setB((prev) => ({ ...prev, [k]: v }));
@@ -483,26 +483,64 @@ export default function IntakeForm() {
   };
 
   /* The Monday token can write to every board on the account, so the write
-   * happens server-side. The browser only ever sends the brief. */
+   * happens server-side. The browser sends the brief and the PDF.
+   *
+   * jsPDF only runs in a browser, so the file is built here and posted as
+   * multipart alongside the brief JSON. The server attaches it to the item
+   * it just created. */
   const saveToMonday = async () => {
-    setRemote({ state: 'saving', message: 'Saving…', url: null });
+    setRemote({ state: 'saving', message: 'Saving…', url: null, details: [] });
     try {
-      const res = await fetch('/api/monday/brief', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          brief: b,
-          flags: notes.map((n) => `[${n.level.toUpperCase()}] ${n.title}. ${n.body}`).join('\n'),
-        }),
-      });
+      const form = new FormData();
+      form.append('brief', JSON.stringify(b));
+
+      /* A PDF that will not build should not cost the user the record, so
+       * the save goes ahead without it and says so. */
+      let pdfNote = null;
+      try {
+        form.append('pdf', await briefPdfBlob(b, notes, fc), 'brief.pdf');
+      } catch (err) {
+        pdfNote = `The PDF could not be built, so nothing was attached: ${err.message}`;
+      }
+
+      const res = await fetch('/api/monday/brief', { method: 'POST', body: form });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) {
-        setRemote({ state: 'error', message: json.error || `Failed (${res.status})`, url: null });
+        setRemote({
+          state: 'error',
+          message: json.error || `Failed (${res.status})`,
+          url: null,
+          details: [],
+        });
         return;
       }
-      setRemote({ state: 'done', message: 'Saved to Monday.com', url: json.url });
+
+      const details = [
+        ...(pdfNote ? [pdfNote] : []),
+        ...(json.warnings || []),
+        ...(json.notes || []),
+        ...(json.unmapped || []).map((u) => `${u.field} was not written: ${u.reason}.`),
+      ];
+
+      setRemote({
+        state: details.length ? 'partial' : 'done',
+        message: [
+          'Saved to Monday.com',
+          json.group ? `in the ${json.group} group` : 'with no group, because none matched the client',
+          json.attached ? 'with the brief attached' : null,
+        ]
+          .filter(Boolean)
+          .join(', '),
+        url: json.url,
+        details,
+      });
     } catch (err) {
-      setRemote({ state: 'error', message: `Could not reach the server: ${err.message}`, url: null });
+      setRemote({
+        state: 'error',
+        message: `Could not reach the server: ${err.message}`,
+        url: null,
+        details: [],
+      });
     }
   };
 
@@ -766,17 +804,29 @@ export default function IntakeForm() {
             </footer>
 
             {remote.state !== 'idle' && remote.state !== 'saving' && (
-              <p className={`remote-msg${remote.state === 'error' ? ' bad' : ''}`}>
-                {remote.message}
-                {remote.url && (
-                  <>
-                    {'. '}
-                    <a href={remote.url} target="_blank" rel="noreferrer">
-                      open the record
-                    </a>
-                  </>
+              <div className="remote-block">
+                <p className={`remote-msg${remote.state === 'error' ? ' bad' : ''}`}>
+                  {remote.message}
+                  {remote.url && (
+                    <>
+                      {'. '}
+                      <a href={remote.url} target="_blank" rel="noreferrer">
+                        open the record
+                      </a>
+                    </>
+                  )}
+                </p>
+                {/* Everything the board could not take. The item is already
+                    saved, so these are things to fix in Monday, not errors
+                    to retry. */}
+                {remote.details?.length > 0 && (
+                  <ul className="remote-notes">
+                    {remote.details.map((d, i) => (
+                      <li key={i}>{d}</li>
+                    ))}
+                  </ul>
                 )}
-              </p>
+              </div>
             )}
           </div>
 
@@ -1069,13 +1119,19 @@ const CSS = `
   border-left: 1px solid var(--rule); border-right: 1px solid var(--rule); padding: 1px 0;
 }
 .cfmt-total { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--carbon); }
+.remote-block { background: #F3F2EC; border-top: 1px dotted var(--rule); }
 .remote-msg {
-  margin: 0; padding: 10px 22px 13px; background: #F3F2EC;
-  border-top: 1px dotted var(--rule);
+  margin: 0; padding: 10px 22px 13px;
   font-size: 12px; line-height: 1.5; color: var(--ok);
 }
 .remote-msg.bad { color: var(--stamp); }
 .remote-msg a { color: var(--carbon); }
+.remote-notes {
+  margin: 0; padding: 0 22px 13px 38px;
+  font-size: 11.5px; line-height: 1.55; color: var(--carbon);
+}
+.remote-notes li { margin-bottom: 3px; }
+.remote-notes li:last-child { margin-bottom: 0; }
 .btn {
   font-family: 'Archivo Narrow', sans-serif; font-weight: 700;
   font-size: 11px; letter-spacing: .13em; text-transform: uppercase;
