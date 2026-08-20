@@ -8,19 +8,64 @@ import {
   fileColumn,
   isConfigured,
   mondayConfig,
+  norm,
 } from '@/lib/monday';
 
 export const dynamic = 'force-dynamic';
 
-/** Whether the form should offer the Monday button at all. */
-export async function GET() {
+/**
+ * Whether the form should offer the Monday button at all.
+ *
+ * With `?schema=1`, also reports what the server can see on the board and
+ * which brief field lands in which column. Every failure this integration
+ * has had was a title on the board not matching a title in the code, and
+ * the only way to see that before was to save a brief and inspect the
+ * result. This answers it in one request, and writes nothing.
+ */
+export async function GET(request) {
   const cfg = mondayConfig();
-  return NextResponse.json({
+  const base = {
     configured: isConfigured(),
     /* Never the token itself, only whether one is present. */
     hasToken: Boolean(cfg.token),
     hasBoard: Boolean(cfg.boardId),
-  });
+  };
+
+  const wantsSchema = new URL(request.url).searchParams.get('schema');
+  if (!wantsSchema || !base.configured) return NextResponse.json(base);
+
+  try {
+    /* Fresh rather than cached: somebody checking the mapping has usually
+     * just changed something on the board and wants to know if it took. */
+    const schema = await boardSchema({ refresh: true });
+    const fields = briefToFields({});
+
+    return NextResponse.json({
+      ...base,
+      board: { id: schema.boardId, name: schema.boardName, url: schema.boardUrl },
+      groups: schema.groups.map((g) => g.title),
+      columns: schema.columns.map((c) => ({
+        title: c.title,
+        type: c.type,
+        ...(c.labels.length ? { labels: c.labels } : {}),
+      })),
+      /* One row per field the brief tries to write, and where it lands. */
+      mapping: Object.keys(fields).map((title) => {
+        const col = schema.columnByTitle.get(norm(title));
+        return col
+          ? { field: title, column: col.title, type: col.type }
+          : { field: title, column: null, note: 'no column with that title on the board' };
+      }),
+      briefFile: (() => {
+        const col = fileColumn(schema, BRIEF_FILE_COLUMN);
+        return col
+          ? { column: col.title, type: col.type }
+          : { column: null, note: `no file column called "${BRIEF_FILE_COLUMN}"` };
+      })(),
+    });
+  } catch (err) {
+    return NextResponse.json({ ...base, error: err.message }, { status: 502 });
+  }
 }
 
 /**
